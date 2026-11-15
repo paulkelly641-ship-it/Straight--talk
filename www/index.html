@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Straight Talk AI — Duke</title>
+<meta name="description" content="Duke tells it straight. No sugarcoating, no bullshit — blunt, profanity-laced advice on love, money, work, and life. 18+ only.">
+<!--
+  STRAIGHT TALK AI — single-file static app (no bundler, no build step).
+  Duke, the blunt AI advisor. 18+ only.
+
+  TWO BRAINS:
+  * Built-in engine (default): a local, on-device reply engine. Topic-keyed
+    blunt answers and roasts, written in Duke's voice. It works fully
+    offline and sends nothing anywhere. It is NOT a live AI model — it is
+    a template/keyword engine, clearly labelled "Built-in engine" in the
+    app. (The hosted web version's built-in engine was server-side
+    inference and cannot run in a static app.)
+  * Real AI (optional, bring-your-own-key): paste your own OpenAI API key
+    in Settings. The app then calls https://api.openai.com/v1/chat/completions
+    directly (model gpt-4o-mini) from your device. Your key is stored only
+    in localStorage on your device and is sent ONLY to api.openai.com —
+    it is never baked into this file and never sent to any other server.
+
+  PAYMENTS: 5 free messages, then a subscription paywall. On a real
+  iPhone/iPad build, payment goes through Apple In-App Purchase via the
+  RevenueCat Capacitor plugin, reached via Capacitor.registerPlugin('Purchases')
+  — the plugin's own JS module is NOT imported, because its ESM files use
+  extensionless relative imports ('./definitions') that browsers cannot
+  resolve without a bundler. registerPlugin calls the same native methods
+  directly (configure, getOfferings, purchasePackage, restorePurchases,
+  getCustomerInfo). On plain web, the paywall is a preview only: it never
+  charges a card and there is no card form in this app.
+  See README.md for the full setup (RevenueCat key, App Store Connect).
+
+  VOICE: Duke talks via window.speechSynthesis (deep male voice, pitch
+  0.7, speed from Settings, default 0.95) — no server TTS, no audio
+  files. Mic dictation uses window.SpeechRecognition and only fills the
+  input box; the user still taps send. Hearing Duke works on iPhone;
+  the mic depends on the device/browser and can be limited.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "@capacitor/core": "https://cdn.jsdelivr.net/npm/@capacitor/core@8.6.2/dist/index.js"
+  }
+}
+</script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #0D0D0D; --surface: #1A1A1A; --surface2: #242424;
+    --text: #FFFFFF; --dim: #A8A29E; --accent: #FF4D00; --accent2: #E63E00;
+    --border: #2E2E2E; --bubble-user: #FF4D00; --bubble-duke: #242424;
+  }
+  body.light {
+    --bg: #F2EFE9; --surface: #FFFFFF; --surface2: #EAE6DE;
+    --text: #111111; --dim: #6B6560; --accent: #E63E00; --accent2: #FF4D00;
+    --border: #D8D2C8; --bubble-user: #E63E00; --bubble-duke: #FFFFFF;
+  }
+  body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px 48px; min-height: 100dvh; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+  h1 { font-size: 34px; line-height: 1.1; margin: 12px 0 6px; font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+  h2 { font-size: 24px; margin: 22px 0 10px; font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif; text-transform: uppercase; }
+  h3 { font-size: 18px; margin: 18px 0 8px; }
+  p { font-size: 16px; line-height: 1.55; }
+  .center { text-align: center; }
+  .muted { color: var(--dim); font-size: 14px; line-height: 1.5; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; word-break: break-all; }
+
+  /* Header */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 12px 0; margin-bottom: 4px;
+    background: var(--bg); border-bottom: 3px solid var(--accent);
+  }
+  .logo { font-size: 30px; font-weight: 900; letter-spacing: -0.5px; font-family: "Arial Narrow", "Helvetica Neue", Arial, sans-serif; line-height: 1; }
+  .logo small { display: block; font-size: 11px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  .logo .duke-d { color: var(--accent); }
+  .hdr-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .icon-btn {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: 999px; padding: 7px 11px; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .icon-btn.premium { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Engine badge */
+  .badge {
+    display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: 0.5px;
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--dim);
+  }
+  .badge.real { color: #7CFC98; border-color: #2E7D32; }
+  .badge.builtin { color: var(--dim); }
+
+  /* Buttons */
+  .btn {
+    display: block; width: 100%; border: none; border-radius: 14px; cursor: pointer;
+    padding: 16px; margin: 10px 0; font-size: 17px; font-weight: 800; font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-white { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* Topic chips */
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .chip {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: 999px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .chip.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* Starters */
+  .starter {
+    display: block; width: 100%; text-align: left; background: var(--surface);
+    color: var(--text); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; margin: 8px 0; font-size: 15px; line-height: 1.4; cursor: pointer;
+  }
+
+  /* Chat */
+  #messages { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 12px 0; }
+  .msg { max-width: 88%; padding: 12px 14px; border-radius: 16px; font-size: 16px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--bubble-user); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.duke { align-self: flex-start; background: var(--bubble-duke); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg.duke .who { display: block; font-size: 11px; font-weight: 900; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
+  .msg .err { color: #FF6B6B; }
+  .typing { color: var(--dim); font-style: italic; }
+  .input-bar {
+    position: sticky; bottom: 0; padding: 10px 0 14px; background: var(--bg);
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .input-bar textarea {
+    flex: 1; resize: none; border-radius: 14px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); padding: 12px 14px;
+    font-size: 16px; font-family: inherit; line-height: 1.4; min-height: 48px; max-height: 120px;
+  }
+  .send-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 14px;
+    padding: 0 18px; height: 48px; font-size: 15px; font-weight: 900; cursor: pointer; white-space: nowrap;
+  }
+  .send-btn:disabled { opacity: 0.5; }
+
+  /* Voice: mic button, Hear it buttons, mic banners */
+  .mic-btn {
+    flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .mic-btn.listening {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+    animation: micPulse 1s ease-in-out infinite;
+  }
+  @keyframes micPulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 77, 0, 0.5); }
+    70% { box-shadow: 0 0 0 12px rgba(255, 77, 0, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 77, 0, 0); }
+  }
+  .hear-btn {
+    background: none; border: 1px solid var(--border); color: var(--dim);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700;
+    cursor: pointer; margin-top: 8px;
+  }
+  .hear-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mic-banner {
+    background: var(--surface); border: 1px solid var(--accent); border-radius: 12px;
+    padding: 10px 12px; margin: 8px 0; font-size: 14px; line-height: 1.5;
+  }
+  .mic-error {
+    background: #3A1F10; color: #FFD9A8; border: 1px solid #7A3E12; border-radius: 12px;
+    padding: 10px 12px; margin: 8px 0; font-size: 14px; line-height: 1.5;
+  }
+  body.light .mic-error { background: #FFF3E0; color: #7A3E12; }
+  .mic-error button { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; font-size: 14px; padding: 0 0 0 8px; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  /* Paywall */
+  .plan {
+    border: 2px solid var(--border); border-radius: 16px; padding: 16px; margin: 10px 0;
+    cursor: pointer; position: relative; background: var(--surface);
+  }
+  .plan.selected { border-color: var(--accent); }
+  .p-tag {
+    position: absolute; top: -11px; right: 14px; background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 900; padding: 3px 9px; border-radius: 999px; letter-spacing: 0.5px;
+  }
+  .p-name { font-size: 19px; font-weight: 900; }
+  .p-price { font-size: 16px; color: var(--dim); margin-top: 2px; }
+  .p-note { font-size: 14px; color: var(--dim); margin-top: 4px; }
+  .note-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 12px 0; font-size: 14px; line-height: 1.5; }
+  .warn-box { background: #3A1F10; color: #FFD9A8; border: 1px solid #7A3E12; border-radius: 12px; padding: 12px 14px; margin: 12px 0; font-size: 14px; line-height: 1.5; }
+  body.light .warn-box { background: #FFF3E0; color: #7A3E12; }
+
+  /* Gate */
+  .gate-duke { font-size: 120px; text-align: center; line-height: 1; margin: 32px 0 0; font-weight: 900; color: var(--accent); font-family: "Arial Narrow", Arial, sans-serif; }
+  .gate-18 { font-size: 64px; text-align: center; font-weight: 900; margin: 0; }
+
+  /* Forms */
+  label { font-weight: 800; font-size: 15px; display: block; margin: 14px 0 6px; }
+  input[type="text"], input[type="password"], select {
+    width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 16px; font-family: inherit;
+  }
+  .linkrow { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin: 14px 0; }
+  .linkrow button { background: none; border: none; color: var(--dim); font-size: 14px; cursor: pointer; text-decoration: underline; padding: 6px; }
+
+  /* History */
+  .hist-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 8px 0; cursor: pointer; }
+  .hist-item .t { font-weight: 800; font-size: 15px; }
+  .hist-item .p { color: var(--dim); font-size: 13px; margin-top: 4px; line-height: 1.4; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; margin-right: 6px; }
+
+  /* Publish Kit */
+  .kit-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+  .kit-tab { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .kit-tab.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .copy-btn { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; margin: 6px 0 14px; }
+  .field-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+  .check-item { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 15px; line-height: 1.45; }
+  .check-item input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }
+  .check-item.done { color: var(--dim); text-decoration: line-through; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #222; color: #fff; padding: 12px 18px; border-radius: 999px;
+    font-size: 15px; font-weight: 700; z-index: 50; max-width: 90vw; text-align: center;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 18+ GATE (first screen) ============ -->
+  <section id="view-gate" class="view">
+    <div class="gate-duke">DUKE</div>
+    <p class="gate-18">18+ ONLY</p>
+    <h1 class="center">Straight Talk AI</h1>
+    <p class="center">Duke tells it straight. No sugarcoating, no bullshit — blunt advice with all the cuss words. This app is for adults only.</p>
+    <button class="btn btn-primary" onclick="confirmAge()">I'M 18 OR OLDER — LET ME IN</button>
+    <button class="btn btn-white" onclick="denyAge()">I'm under 18</button>
+    <p class="muted center">By entering you confirm you are 18 or older. Duke is entertainment, not a therapist or a lawyer. In crisis? Call 988 (US).</p>
+    <div id="under18" class="warn-box hidden">⛔ Sorry — Straight Talk AI is 18+ only. The language and the advice are for adults. Come back when you're 18.</div>
+  </section>
+
+  <!-- ============ CHAT ============ -->
+  <section id="view-chat" class="view hidden">
+    <header>
+      <div class="logo"><span class="duke-d">D</span>UKE<small>Straight Talk AI &middot; No Bullshit Advice</small></div>
+      <div class="hdr-btns">
+        <button class="icon-btn" id="voiceToggle" aria-label="Turn Duke's voice off" aria-pressed="true" onclick="toggleVoice()">🔊 Voice on</button>
+        <button class="icon-btn" onclick="newChat()" title="Start a new chat">+ New</button>
+        <button class="icon-btn" onclick="showView('view-history')">History</button>
+        <button class="icon-btn" onclick="showView('view-kit')">Publish Kit</button>
+        <button class="icon-btn" onclick="showView('view-settings')">Settings</button>
+        <button class="icon-btn premium" id="premiumBtn" onclick="showView('view-paywall')">Premium</button>
+      </div>
+    </header>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0 2px;">
+      <span class="badge builtin" id="engineBadge">BUILT-IN ENGINE</span>
+      <span class="muted" id="freeBadge"></span>
+    </div>
+    <div class="chip-row" id="topicRow"></div>
+    <div id="messages"></div>
+    <div id="starters"></div>
+    <div id="freeOver" class="warn-box hidden">🔒 <b>Free preview's over.</b> You've used your 5 free messages. Go Premium to keep talking to Duke — unlimited messages, all topics, no limits.</div>
+    <div class="input-bar">
+      <button class="mic-btn" id="micBtn" aria-label="Talk instead of typing — tap and speak to Duke" onclick="toggleMic()">🎤</button>
+      <textarea id="msgInput" rows="2" placeholder="Tell Duke what's going on…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">TELL ME</button>
+    </div>
+    <div id="micBanner" class="mic-banner hidden">🎤 Listening… talk now — your words land in the box, ready to send.</div>
+    <div id="micError" class="mic-error hidden"><span id="micErrorText"></span><button onclick="hideMicError()">Dismiss</button></div>
+    <p class="muted center">18+ &middot; Duke is entertainment, not a therapist or a lawyer. In crisis? Call 988.</p>
+  </section>
+
+  <!-- ============ PAYWALL ============ -->
+  <section id="view-paywall" class="view hidden">
+    <div class="center" style="font-size:64px;line-height:1.1;">⚡</div>
+    <h1 class="center">Go Premium</h1>
+    <p class="center">Unlimited straight talk from Duke. No message limits, all topics, Roast Me included.</p>
+    <div class="plan" data-plan="monthly" onclick="selectPlan('monthly')">
+      <div class="p-name">Monthly</div>
+      <div class="p-price">$9.99 / month</div>
+      <div class="p-note">Flexible — cancel anytime</div>
+    </div>
+    <div class="plan selected" data-plan="yearly" onclick="selectPlan('yearly')">
+      <span class="p-tag">BEST VALUE</span>
+      <div class="p-name">Yearly</div>
+      <div class="p-price">$59.99 / year</div>
+      <div class="p-note">About $5.00 a month — save about 50% vs monthly</div>
+    </div>
+    <div class="plan" data-plan="lifetime" onclick="selectPlan('lifetime')">
+      <div class="p-name">Lifetime</div>
+      <div class="p-price">$99.99 one-time</div>
+      <div class="p-note">Pay once, keep Duke forever</div>
+    </div>
+    <button class="btn btn-primary" id="subscribeBtn" onclick="onSubscribe()">SUBSCRIBE (PREVIEW) — $59.99 / year</button>
+    <button class="btn btn-white" onclick="onRestore()">Restore Purchases</button>
+    <p class="muted center" id="renewalNote">Payment will be charged to your Apple ID account at confirmation of purchase. Subscriptions automatically renew unless auto-renew is turned off at least 24 hours before the end of the current period. Manage or cancel anytime in Settings &gt; Apple ID &gt; Subscriptions. Lifetime is a one-time purchase and does not renew.</p>
+    <div class="note-box" id="previewNote">👀 <b>Preview:</b> this page is a preview. On iPhone and iPad, payment goes through Apple In-App Purchase — no card is ever charged here, and there is no card form in this app.</div>
+    <div class="warn-box hidden" id="setupNote">⚙️ <b>Not set up yet:</b> subscriptions need a RevenueCat public Apple API key. Add it in <code>www/index.html</code> where it says TODO, and create the three products in App Store Connect (see README.md).</div>
+    <button class="btn btn-white" onclick="backToChat()">← Back to Duke</button>
+    <div class="linkrow">
+      <button onclick="showView('view-privacy')">Privacy Policy</button>
+      <button onclick="showView('view-terms')">Terms of Use</button>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section id="view-history" class="view hidden">
+    <h2>History</h2>
+    <p class="muted">Your chats live only on this device. Nothing is uploaded anywhere.</p>
+    <div id="historyList"></div>
+    <button class="btn btn-white" onclick="clearAllChats()">Clear all chats</button>
+    <button class="btn btn-primary" onclick="backToChat()">← Back to Duke</button>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="view-settings" class="view hidden">
+    <h2>Settings</h2>
+    <p><b>Duke's brain:</b> <span class="badge builtin" id="engineBadge2">BUILT-IN ENGINE</span></p>
+    <p class="muted">The built-in engine is a local, on-device reply engine — blunt, profane, straight talk, no internet needed. It is not a live AI model. For real AI answers, add your own OpenAI key below.</p>
+
+    <div id="voiceSettings">
+      <h3>Duke's voice <span class="badge" id="voiceBadge">VOICE ON</span></h3>
+      <p class="muted">When voice is on, Duke's replies play out loud automatically, and every message has a Hear it button so you can replay it anytime. Turn it off and Duke stays quiet until you tap Hear it.</p>
+      <button class="btn btn-primary" id="voiceToggle2" onclick="toggleVoice()">VOICE ON — TAP TO MUTE DUKE</button>
+      <label for="duke-voice">Which voice</label>
+      <select id="duke-voice" onchange="onVoiceSelect(this.value)"></select>
+      <label for="duke-rate">Speaking speed — <span id="rateLabel">0.95×</span></label>
+      <input type="range" id="duke-rate" min="0.7" max="1.3" step="0.05" value="0.95" oninput="onRateInput(this.value)">
+      <div style="display:flex;justify-content:space-between;" class="muted"><span>Slow</span><span>Fast</span></div>
+      <button class="btn btn-white" id="testVoiceBtn" onclick="toggleTestVoice()">HEAR DUKE TEST IT</button>
+      <p class="muted">Hearing Duke talk works on iPhone. The microphone depends on your device and browser and can be limited — typing always works. Your voice choices and speed are saved on this device only.</p>
+    </div>
+    <div id="noSpeechNote" class="note-box hidden">This browser doesn't offer speech, so Duke can't talk out loud here. Everything still works by reading and typing.</div>
+
+    <h3>Your OpenAI API key (optional)</h3>
+    <p class="muted">Bring your own key and Duke answers with real AI (gpt-4o-mini). Your key is stored only on this device, in local storage. It is sent <b>only</b> to api.openai.com — never to any other server, and never baked into the app. Get a key at <span class="mono">platform.openai.com/api-keys</span> (you pay OpenAI's usage rates, usually a few cents per chat).</p>
+    <label for="apiKeyInput">OpenAI API key</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-…" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="btn btn-primary" onclick="saveApiKey()">SAVE KEY</button>
+    <button class="btn btn-white" onclick="removeApiKey()">Remove key</button>
+    <p class="muted" id="keyStatus"></p>
+
+    <h3>Subscription</h3>
+    <p id="subStatus">Subscription: not active.</p>
+    <button class="btn btn-white" onclick="showView('view-paywall')">See plans</button>
+    <button class="btn btn-white" id="cancelSubBtn" onclick="cancelPreviewSub()">Cancel subscription (preview)</button>
+
+    <h3>Appearance</h3>
+    <button class="btn btn-white" onclick="toggleTheme()">Toggle light / dark mode</button>
+
+    <button class="btn btn-primary" onclick="backToChat()">← Back to Duke</button>
+    <div class="linkrow">
+      <button onclick="showView('view-privacy')">Privacy Policy</button>
+      <button onclick="showView('view-terms')">Terms of Use</button>
+    </div>
+  </section>
+
+  <!-- ============ PRIVACY POLICY ============ -->
+  <section id="view-privacy" class="view hidden">
+    <h2>Privacy Policy — Straight Talk AI</h2>
+    <p><strong>Last updated:</strong> November 14, 2026</p>
+    <p>Straight Talk AI (“the app”) is an adults-only (18+) advice chat app. Duke is a fictional character who gives blunt, profanity-laced advice for entertainment.</p>
+    <h3>What we collect: nothing</h3>
+    <p>The app does not collect, store, or share any personal information. There is no account, no sign-in, and no server that receives your data.</p>
+    <h3>On-device only</h3>
+    <p>Your chats, your message count, and your OpenAI API key (if you add one) are saved only on your own device, in the app's local storage. They never leave the device, and deleting the app deletes them. Your API key is sent only to api.openai.com when you ask Duke a question with Real AI on — never to any other server.</p>
+    <h3>No ads, no tracking</h3>
+    <p>The app shows no advertisements and uses no analytics or tracking tools.</p>
+    <h3>Purchases</h3>
+    <p>Subscriptions and the lifetime purchase are processed by Apple through In-App Purchase. Apple handles payment; we never see your card details. Purchase status is checked on-device through RevenueCat to unlock the app. RevenueCat receives only the anonymous purchase receipt data needed to verify the subscription — no name or email.</p>
+    <h3>Adults only</h3>
+    <p>This app is for users 18 and older. It contains frequent, intense profanity. It does not knowingly collect any information from anyone under 18.</p>
+    <h3>Changes to this policy</h3>
+    <p>If this policy changes, the new version will be posted here and the “Last updated” date above will change.</p>
+    <h3>Contact</h3>
+    <p>Questions about this policy? Email <a href="mailto:paulkelly641@gmail.com">paulkelly641@gmail.com</a>.</p>
+    <button class="btn btn-primary" onclick="backToChat()">← Back to Duke</button>
+  </section>
+
+  <!-- ============ TERMS OF USE ============ -->
+  <section id="view-terms" class="view hidden">
+    <h2>Terms of Use — Straight Talk AI</h2>
+    <p><strong>Last updated:</strong> November 14, 2026</p>
+    <p>Straight Talk AI is an entertainment app for adults 18 and older. Duke is a fictional character. His advice is blunt opinion for entertainment — it is not professional advice of any kind.</p>
+    <p><b>Not a professional.</b> Duke is not a therapist, doctor, lawyer, or financial advisor. Do not treat his answers as medical, legal, or financial advice. If you need real help with your health, your rights, or your money, talk to a licensed professional.</p>
+    <p><b>In crisis?</b> If you feel you may harm yourself, call or text <b>988</b> (US Suicide and Crisis Lifeline) right now, or call emergency services (911). Duke cannot help with a crisis.</p>
+    <p><b>Your key, your bill.</b> If you add your own OpenAI API key, you are responsible for your own OpenAI usage charges.</p>
+    <p><b>Subscriptions.</b> Monthly $9.99 and Yearly $59.99 auto-renew unless cancelled at least 24 hours before the end of the current period. Lifetime $99.99 is a one-time purchase. Manage or cancel in Settings &gt; Apple ID &gt; Subscriptions. Payment is charged to your Apple ID account.</p>
+    <p><b>Use it like an adult.</b> You must be 18 or older to use this app. Don't use Duke's words to harass anyone.</p>
+    <button class="btn btn-primary" onclick="backToChat()">← Back to Duke</button>
+  </section>
+
+  <!-- ============ PUBLISH KIT ============ -->
+  <section id="view-kit" class="view hidden">
+    <h2>📦 Publish Kit</h2>
+    <p class="muted">Everything needed to ship Straight Talk AI to the App Store. Progress on the checklist is saved on this device.</p>
+    <div class="kit-tabs" id="kitTabs"></div>
+    <div id="kitContent"></div>
+    <button class="btn btn-primary" onclick="backToChat()">← Back to Duke</button>
+  </section>
+
+</div>
+<div id="toast" class="hidden"></div>
+<script type="module">
+/* =====================================================================
+   STRAIGHT TALK AI — app logic
+   - Chat, history, free-message counter: 100% local (localStorage).
+   - Duke has TWO brains:
+       (a) Built-in engine: a local template/keyword engine (below).
+           Blunt, profane, straight talk. Works offline. NOT a live AI.
+       (b) Real AI (bring-your-own-key): your OpenAI key, stored only on
+           this device, sent ONLY to api.openai.com (gpt-4o-mini).
+   - Purchases: ONLY through Apple In-App Purchase via the RevenueCat
+     Capacitor plugin, and ONLY on a native iOS build. There is no card
+     form and no web checkout anywhere in this app.
+   ===================================================================== */
+
+// ---- TODO: paste your RevenueCat PUBLIC Apple API key here ----------------
+// Create a free account at revenuecat.com, add the Straight Talk AI app, and copy
+// the PUBLIC Apple API key (it starts with "appl_"). Until this is set,
+// the native paywall shows a "Not set up yet" note and cannot purchase.
+// The key is PUBLIC (safe to ship in the app) — never paste a secret key.
+const REVENUECAT_APPLE_API_KEY = 'TODO_REPLACE_WITH_YOUR_REVENUECAT_PUBLIC_APPLE_API_KEY';
+
+// The Entitlement identifier in the RevenueCat dashboard. It must be named
+// exactly this and linked to all three products below.
+const ENTITLEMENT_ID = 'premium';
+
+// ---- Products (do not change — these are the App Store Connect IDs) -----
+const PRODUCTS = {
+  monthly:  { id: 'com.paulkelly.straighttalkai.monthly',  price: '$9.99',  period: 'month', label: 'Monthly' },
+  yearly:   { id: 'com.paulkelly.straighttalkai.yearly',   price: '$59.99', period: 'year',  label: 'Yearly' },
+  lifetime: { id: 'com.paulkelly.straighttalkai.lifetime', price: '$99.99', period: 'once',  label: 'Lifetime' },
+};
+const PLANS = ['monthly', 'yearly', 'lifetime'];
+
+// ---- Free limit ------------------------------------------------------------
+const FREE_LIMIT = 5;
+
+// ---- Local storage keys (same names as the web app) ------------------------
+const LS = {
+  age: 'straight-talk-18',
+  key: 'duke-openai-key',
+  plan: 'duke-premium-plan',
+  chats: 'duke-chats',
+  active: 'duke-active-chat',
+  kit: 'duke-kit-checked',
+  theme: 'duke-theme',
+};
+
+// ---- Topics & starters ------------------------------------------------------
+const TOPICS = ['Love', 'Money', 'Work', 'Life', 'Roast Me'];
+const STARTERS = {
+  'Love': [
+    "My girlfriend says I never listen. Is she right?",
+    "Should I text my ex back?",
+    "I think my partner is cheating. What do I do?",
+  ],
+  'Money': [
+    "I'm broke every month by the 15th. What the hell is wrong with me?",
+    "Should I take out a loan to pay off my cards?",
+    "How do I stop spending money I don't have?",
+  ],
+  'Work': [
+    "My boss takes credit for my work. Do I confront him?",
+    "Should I quit my job with nothing lined up?",
+    "I got passed over for a promotion. Now what?",
+  ],
+  'Life': [
+    "I keep saying I'll start Monday and never do. What's my problem?",
+    "Everyone else seems to have their shit together. Do they?",
+    "Am I wasting my life?",
+  ],
+  'Roast Me': [
+    "Roast my life choices.",
+    "Tell me why I'm still single.",
+    "Roast my spending habits.",
+  ],
+};
+
+const DUKE_OPENER = "I'm Duke. I don't do sugarcoating, I don't do there there, and I sure as hell don't tell you what you want to hear. You tell me what's going on, I'll tell you straight up if you're being dumb, lying to yourself, or actually getting screwed over — and what to do about it.\n\nSo. What's the problem?";
+
+// System prompt used for the Real AI (OpenAI) brain. Same rules Duke lives by.
+const DUKE_SYSTEM = [
+  "You are Duke, a brutally honest advice-giver. You swear freely and you never sugarcoat anything.",
+  "Your job: tell the user the hard truth first, then give concrete numbered steps they can actually do, then end with a line starting 'Bottom line:'.",
+  "No therapy-speak, no 'I hear you', no motivational poster bullshit. Talk like a blunt friend who actually gives a damn.",
+  "If the user is being dumb, say so plainly. If they are lying to themselves, call it out. If someone else is screwing them over, say that too.",
+  "Never use slurs targeting race, sexuality, disability, or religion.",
+  "You are not a doctor, therapist, lawyer, or financial advisor — say so if asked for medical, legal, or financial advice.",
+  "If the user sounds like they may harm themselves, tell them to call or text 988 (US Suicide and Crisis Lifeline) right away.",
+  "Keep replies focused and readable: a short hard truth, numbered steps, then the Bottom line.",
+].join(' ');
+
+// ---- Duke's built-in engine (local template/keyword replies) ---------------
+// NOTE: this is a local template engine, not a live AI model. It picks a
+// blunt, topic-keyed answer from the pools below. The Real AI brain
+// (your own OpenAI key, in Settings) is what answers like a live model.
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const DUKE_LOCAL = {
+  'Love': [
+    "Yeah, she's right. You hear the words and then you do whatever the fuck you were going to do anyway. That's not listening, that's waiting for your turn to talk.\n\n1. Next time she talks, shut your mouth until she's actually finished.\n2. Repeat back what she said before you answer. If you can't, you weren't listening.\n3. Do the thing she asked about within 24 hours or stop pretending you care.\n\nBottom line: listening is a verb, not a vibe. Start doing it.",
+    "You already know the answer and you don't like it. If you have to ask a blunt stranger whether your partner is cheating, trust is already dead — you're just looking for permission to admit it.\n\n1. Stop snooping and look at the facts: secretive phone, weird hours, stories that don't add up.\n2. Ask them straight, face to face, and watch their reaction — not their words.\n3. Decide what you'll do if it's true BEFORE you get the answer, or you'll freeze.\n\nBottom line: the question isn't whether they're cheating. It's why you're still there if you don't trust them.",
+    "Texting your ex is like drinking the milk after the expiration date and being surprised it tastes like shit. You broke up for a reason. That reason didn't expire.\n\n1. Delete the thread so you can't re-read it at 2 a.m.\n2. If you're lonely, call a friend, not the person who already left.\n3. Give it 30 days. If you still want to text them then, you're allowed to be dumb on purpose.\n\nBottom line: your ex is an ex for a reason. Leave it in the past where it belongs.",
+  ],
+  'Money': [
+    "You're broke by the 15th because you spend like payday is a personality trait. It's not a mystery. It's math, and the math hates you.\n\n1. Write down every dollar you spent last month. All of it. Yes, the dumb shit too.\n2. Cut one recurring thing today — one subscription, one habit, one delivery app.\n3. Move money to savings the day you get paid, before you can touch it.\n\nBottom line: you don't have an income problem, you have a 'spend first, think never' problem.",
+    "A loan to pay off cards is just moving the fire from one room to another and calling it fixed. It works ONLY if you stop using the cards.\n\n1. Add up the total debt. The real number. Stop hiding from it.\n2. If the loan rate is actually lower AND you cut up the cards, fine. Otherwise you're just buying a prettier hole.\n3. Pay more than the minimum every single month or you'll die old with this debt.\n\nBottom line: debt doesn't care about your intentions. It cares about payments.",
+    "You stop spending money you don't have the same way you stop anything stupid: you make it harder to do.\n\n1. Delete the saved cards from your phone. Every one of them.\n2. 48-hour rule: if you still want it in 48 hours, fine. Most of it you won't.\n3. Unsubscribe from the emails that sell you shit you don't need.\n\nBottom line: willpower is trash. Systems work. Build one.",
+  ],
+  'Work': [
+    "Your boss takes credit because you let him. Every time you stay quiet, you're signing the permission slip.\n\n1. Start a paper trail: email summaries after every win. 'Just confirming I finished X.'\n2. Next time, speak up in the room, calmly: 'Thanks — I built that, happy to walk everyone through it.'\n3. If it keeps happening after you've documented it twice, take it to their boss or start looking.\n\nBottom line: nobody hands you credit. You take it, politely, in writing.",
+    "Quitting with nothing lined up is brave or stupid depending on one thing: how much money you have.\n\n1. If you've got 3 months of expenses saved, quitting is a choice. If not, it's a panic attack with paperwork.\n2. Start applying TODAY, while you still have a paycheck. It's easier to get hired when you're employed.\n3. Don't burn the bridge on the way out — this industry is smaller than you think.\n\nBottom line: don't quit a job. Quit into a better one.",
+    "You got passed over. That stings. Now decide if it's politics or performance, because the fix is different.\n\n1. Ask your manager, directly: 'What exactly do I need to show to get the next one?' Get it in writing.\n2. If the answer is vague bullshit, they already picked someone and the process was theater.\n3. Either way, start building the skills and the exit plan at the same time.\n\nBottom line: a 'no' with a clear reason is feedback. A 'no' with no reason is your cue to leave.",
+  ],
+  'Life': [
+    "You don't have a Monday problem. You have a 'I like the idea of changing more than I like changing' problem.\n\n1. Pick ONE thing. Not five. One.\n2. Do the smallest possible version of it today — 10 minutes, not a whole new life.\n3. Do it again tomorrow. That's the whole secret. There is no other secret.\n\nBottom line: motivation is a lie. Action comes first, motivation follows.",
+    "No, they don't have their shit together. They just post the good parts. You're comparing your blooper reel to their highlight reel, and that's a rigged game.\n\n1. Stop scrolling for an hour a day and notice how much quieter your brain gets.\n2. Write down three things that are actually fine in your life right now.\n3. Measure yourself against who you were last year, not against strangers online.\n\nBottom line: everybody's faking it a little. The ones winning are just faking it forward.",
+    "Are you wasting your life? Let me answer with a question: if you keep doing exactly what you did this week, where are you in five years? If that picture sucks, then yeah — and the good news is you're the one driving.\n\n1. Name the one thing you'd regret NOT doing in five years.\n2. Spend one hour this week on it. One hour. That's it.\n3. Repeat weekly. Small steps beat grand plans every time.\n\nBottom line: you're not out of time. You're out of excuses.",
+  ],
+  'Roast Me': [
+    "Oh, you want the full roast? Fine. You're the kind of person who says 'I should really start working out' while ordering extra fries, and you mean it every single time. Your life choices read like a list of things you'd warn a friend not to do.\n\nBut here's the one real piece of advice: pick the smallest dumb habit you have and kill it this week. One. That's how people actually change — not with a montage, with one less stupid decision a day.\n\nBottom line: you're a mess, but you're a fixable mess. Start small.",
+    "You're still single because you want a movie romance with a streaming-service effort level. You want someone to just show up, love your flaws, and never ask you to change — buddy, that's a dog, not a partner.\n\n1. Be the person someone would actually want to date. Start with hygiene, then hobbies, then honesty.\n2. Go places where your kind of people are, instead of waiting in your living room.\n3. Ask someone out. The worst they say is no, and 'no' won't kill you.\n\nBottom line: love doesn't find people hiding on the couch. Get up.",
+    "Your spending habits? You treat your bank account like a magic trick — money goes in, you wave your hands, and POOF, it's gone, and you have absolutely nothing to show for it except a drawer full of chargers for things you don't own anymore.\n\n1. Check your account every morning for a week. Face the damage.\n2. Cancel three subscriptions today. You know which three.\n3. Give yourself a weekly cash limit and leave the cards at home.\n\nBottom line: you're not broke, you're just funding a lifestyle you can't afford. Stop it.",
+  ],
+};
+const DUKE_LOCAL_GENERIC = [
+  "That's a dumb question and you know it. But fine — here's the truth: you're overthinking the wrong part. The problem isn't complicated, you're just scared of the answer.\n\n1. Say the hard thing out loud, to yourself first.\n2. Do the obvious next step today, not 'soon'.\n3. Stop asking for permission to fix your own life.\n\nBottom line: you already know what to do. Go do it.",
+  "Look, I don't do hand-holding. Here's the deal: whatever you're stuck on, the answer is almost always 'stop lying to yourself about it'.\n\n1. Write down what's actually true, not what you wish was true.\n2. Pick the one move that fixes the most, and do it this week.\n3. If it blows up, you'll survive. You've survived every bad day so far.\n\nBottom line: clarity first, courage second, excuses never.",
+];
+
+function topicOf(text) {
+  const t = text.toLowerCase();
+  if (/(roast|single|ugly|dumb|loser|pathetic)/.test(t)) return 'Roast Me';
+  if (/(girlfriend|boyfriend|wife|husband|ex |cheat|break up|breakup|date|dating|marry|divorce|crush|love)/.test(t)) return 'Love';
+  if (/(money|broke|debt|loan|paycheck|rent|bill|credit|save|spend|cash|bankrupt)/.test(t)) return 'Money';
+  if (/(boss|job|work|coworker|fired|quit|promotion|interview|salary|manager)/.test(t)) return 'Work';
+  return currentTopic;
+}
+
+function dukeLocalReply(userText, topic) {
+  const useTopic = topicOf(userText) === 'Roast Me' || topic === 'Roast Me' ? 'Roast Me' : topic;
+  const pool = DUKE_LOCAL[useTopic] || DUKE_LOCAL_GENERIC;
+  if (Math.random() < 0.15) return pick(DUKE_LOCAL_GENERIC);
+  return pick(pool);
+}
+
+// ---- State -------------------------------------------------------------------
+let currentTopic = 'Life';
+let activeChatId = localStorage.getItem(LS.active) || null;
+let selectedPlan = 'yearly';
+let state = { subscribed: null };
+try {
+  const savedPlan = localStorage.getItem(LS.plan);
+  if (savedPlan) state.subscribed = { plan: savedPlan, via: 'preview', date: new Date().toISOString() };
+} catch (e) {}
+
+function loadChats() {
+  try { return JSON.parse(localStorage.getItem(LS.chats) || '[]'); } catch (e) { return []; }
+}
+function saveChats(chats) { localStorage.setItem(LS.chats, JSON.stringify(chats)); }
+function getChat(id) { return loadChats().find(c => c.id === id) || null; }
+function freeUsed() {
+  return loadChats().reduce((n, c) => n + c.messages.filter(m => m.role === 'user').length, 0);
+}
+function freeLeft() { return Math.max(0, FREE_LIMIT - freeUsed()); }
+function isSubscribed() { return Boolean(state.subscribed); }
+function hasApiKey() { return Boolean((localStorage.getItem(LS.key) || '').trim()); }
+
+function $(id) { return document.getElementById(id); }
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ---- Views -------------------------------------------------------------------
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+  $(id).classList.remove('hidden');
+  if (id === 'view-history') renderHistory();
+  if (id === 'view-settings') renderSettings();
+  if (id === 'view-kit') renderKit();
+  if (id === 'view-chat') updateFreeBadge();
+  window.scrollTo(0, 0);
+}
+function backToChat() { showView('view-chat'); renderChat(); }
+
+function confirmAge() {
+  localStorage.setItem(LS.age, 'yes');
+  showView('view-chat');
+  renderChat();
+}
+function denyAge() { $('under18').classList.remove('hidden'); }
+
+function toggleTheme() {
+  const light = document.body.classList.toggle('light');
+  localStorage.setItem(LS.theme, light ? 'light' : 'dark');
+}
+
+// ---- Chat rendering -----------------------------------------------------------
+function renderTopics() {
+  $('topicRow').innerHTML = TOPICS.map(t =>
+    '<button class="chip' + (t === currentTopic ? ' selected' : '') + '" onclick="selectTopic(\'' + t.replace(/'/g, "\\'") + '\')">' + esc(t) + '</button>'
+  ).join('');
+}
+function selectTopic(t) {
+  currentTopic = t;
+  renderTopics();
+  renderStarters();
+}
+function renderStarters() {
+  const chat = activeChatId ? getChat(activeChatId) : null;
+  if (chat && chat.messages.length > 0) { $('starters').innerHTML = ''; return; }
+  $('starters').innerHTML = '<p class="muted" style="margin:14px 0 4px;">Try one:</p>' +
+    STARTERS[currentTopic].map(s =>
+      '<button class="starter" onclick="sendStarter(this)">' + esc(s) + '</button>'
+    ).join('');
+}
+function sendStarter(btn) { $('msgInput').value = btn.textContent; sendMessage(); }
+
+function renderChat() {
+  renderTopics();
+  updateFreeBadge();
+  updateEngineBadge();
+  const box = $('messages');
+  box.innerHTML = '';
+  const chat = activeChatId ? getChat(activeChatId) : null;
+  if (!chat || chat.messages.length === 0) {
+    const d = document.createElement('div');
+    d.className = 'msg duke';
+    heardTexts['opener'] = DUKE_OPENER;
+    d.innerHTML = '<span class="who">DUKE</span>' + esc(DUKE_OPENER).replace(/\n/g, '<br>') +
+      '<br><button class="hear-btn" data-key="opener" aria-pressed="false" onclick="toggleHear(\'opener\', this)">Hear it</button>';
+    box.appendChild(d);
+  } else {
+    chat.messages.forEach(m => appendMsgEl(m.role, m.content, m.id));
+  }
+  renderStarters();
+  $('freeOver').classList.toggle('hidden', isSubscribed() || freeLeft() > 0);
+  $('sendBtn').textContent = (!isSubscribed() && freeLeft() <= 0) ? 'GO PREMIUM' : 'TELL ME';
+}
+function appendMsgEl(role, content, id) {
+  const box = $('messages');
+  const d = document.createElement('div');
+  d.className = 'msg ' + (role === 'user' ? 'user' : 'duke');
+  if (role === 'assistant') {
+    const key = 'msg-' + (id || ('x' + Math.random().toString(36).slice(2, 8)));
+    heardTexts[key] = content;
+    d.innerHTML = '<span class="who">DUKE</span>' + esc(content).replace(/\n/g, '<br>') +
+      '<br><button class="hear-btn" data-key="' + key + '" aria-pressed="false" onclick="toggleHear(\'' + key + '\', this)">Hear it</button>';
+  } else {
+    d.textContent = content;
+  }
+  box.appendChild(d);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+function updateFreeBadge() {
+  $('freeBadge').textContent = isSubscribed()
+    ? 'Premium — unlimited'
+    : ('Free preview — ' + freeLeft() + ' of ' + FREE_LIMIT + ' messages left');
+}
+function updateEngineBadge() {
+  const real = hasApiKey();
+  const label = real ? 'REAL AI — OPENAI GPT-4O-MINI' : 'BUILT-IN ENGINE';
+  document.querySelectorAll('#engineBadge, #engineBadge2').forEach(b => {
+    b.textContent = label;
+    b.classList.toggle('real', real);
+    b.classList.toggle('builtin', !real);
+  });
+}
+
+function newChat() {
+  stopSpeaking();
+  activeChatId = null;
+  localStorage.removeItem(LS.active);
+  renderChat();
+  $('msgInput').focus();
+}
+
+function saveMessage(role, content) {
+  const chats = loadChats();
+  let chat = chats.find(c => c.id === activeChatId);
+  if (!chat) {
+    chat = {
+      id: 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+      title: '', topic: currentTopic,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+    chats.unshift(chat);
+    activeChatId = chat.id;
+    localStorage.setItem(LS.active, activeChatId);
+  }
+  const msg = {
+    id: 'm' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+    role: role, content: content, at: new Date().toISOString(),
+  };
+  chat.messages.push(msg);
+  chat.updatedAt = new Date().toISOString();
+  if (!chat.title && role === 'user') {
+    chat.title = content.length > 52 ? content.slice(0, 52) + '…' : content;
+  }
+  saveChats(chats);
+  return msg.id;
+}
+
+// ---- Sending & the two brains -------------------------------------------------
+async function sendMessage() {
+  stopMic();
+  const input = $('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!isSubscribed() && freeLeft() <= 0) { showView('view-paywall'); return; }
+  input.value = '';
+  saveMessage('user', text);
+  appendMsgEl('user', text);
+  renderStarters();
+  updateFreeBadge();
+  $('freeOver').classList.toggle('hidden', isSubscribed() || freeLeft() > 0);
+  if (!isSubscribed() && freeLeft() <= 0) $('sendBtn').textContent = 'GO PREMIUM';
+
+  // Typing indicator.
+  const typing = document.createElement('div');
+  typing.className = 'msg duke typing';
+  typing.textContent = 'Duke is typing…';
+  $('messages').appendChild(typing);
+  window.scrollTo(0, document.body.scrollHeight);
+
+  const chat = getChat(activeChatId);
+  const history = chat ? chat.messages : [];
+  let reply = null;
+  let usedRealAI = false;
+  if (hasApiKey()) {
+    try {
+      reply = await askOpenAI(history);
+      usedRealAI = true;
+    } catch (err) {
+      typing.remove();
+      showOpenAiError(err, text);
+      return;
+    }
+  }
+  if (reply === null) {
+    // Built-in engine: small delay so it feels like Duke is thinking.
+    await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
+    reply = dukeLocalReply(text, currentTopic);
+  }
+  typing.remove();
+  const mid = saveMessage('assistant', reply);
+  appendMsgEl('assistant', reply, mid);
+  if (voiceOn()) speakText(reply, 'msg-' + mid);
+  if (usedRealAI) toast('Answered with Real AI (OpenAI).');
+}
+
+// ---- Real AI brain (bring-your-own-key) ---------------------------------------
+// Key is read from localStorage at send time and sent ONLY to api.openai.com.
+// It is never baked into this file and never sent anywhere else.
+async function askOpenAI(history) {
+  const key = (localStorage.getItem(LS.key) || '').trim();
+  if (!key) throw new Error('NO_KEY');
+  const msgs = [{ role: 'system', content: DUKE_SYSTEM }];
+  history.slice(-12).forEach(m => msgs.push({ role: m.role, content: m.content }));
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.9, messages: msgs }),
+  });
+  if (!res.ok) {
+    const err = new Error('OPENAI_' + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  const data = await res.json();
+  const out = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!out || !out.trim()) throw new Error('OPENAI_EMPTY');
+  return out.trim();
+}
+
+function showOpenAiError(err, userText) {
+  const box = $('messages');
+  const d = document.createElement('div');
+  d.className = 'msg duke';
+  let msg;
+  if (err && err.status === 401) {
+    msg = '⚠️ OpenAI rejected that key (401). It may be wrong, expired, or out of credit.\n\nTap below to answer with the built-in engine instead, or fix the key in Settings.';
+  } else if (err && err.message === 'OPENAI_EMPTY') {
+    msg = '⚠️ OpenAI sent back an empty reply. Tap below to answer with the built-in engine instead.';
+  } else {
+    msg = '⚠️ Could not reach OpenAI right now (' + (err && err.message ? esc(err.message) : 'network error') + '). Tap below to answer with the built-in engine instead.';
+  }
+  d.innerHTML = '<span class="who">DUKE</span><span class="err">' + msg.replace(/\n/g, '<br>') + '</span><br><br>' +
+    '<button class="btn btn-primary" style="margin:6px 0;" onclick="fallbackToLocal(this)">Use built-in engine for this one</button>' +
+    '<button class="btn btn-white" style="margin:6px 0;" onclick="showView(\'view-settings\')">Fix key in Settings</button>' +
+    '<button class="btn btn-white" style="margin:6px 0;" onclick="this.closest(\'.msg\').remove()">Dismiss</button>';
+  d.dataset.userText = userText;
+  box.appendChild(d);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+async function fallbackToLocal(btn) {
+  const box = btn.closest('.msg');
+  const userText = box.dataset.userText || '';
+  box.remove();
+  const typing = document.createElement('div');
+  typing.className = 'msg duke typing';
+  typing.textContent = 'Duke is typing…';
+  $('messages').appendChild(typing);
+  await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+  const reply = dukeLocalReply(userText, currentTopic);
+  typing.remove();
+  const mid = saveMessage('assistant', reply);
+  appendMsgEl('assistant', reply, mid);
+  if (voiceOn()) speakText(reply, 'msg-' + mid);
+}
+
+// ---- History -------------------------------------------------------------------
+function renderHistory() {
+  const list = $('historyList');
+  const chats = loadChats();
+  if (chats.length === 0) {
+    list.innerHTML = '<p class="muted">No chats yet. Go talk to Duke.</p>';
+    return;
+  }
+  list.innerHTML = chats.map(c => {
+    const last = c.messages[c.messages.length - 1];
+    const date = new Date(c.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return '<div class="hist-item" onclick="openChat(\'' + c.id + '\')">' +
+      '<div class="t"><span class="pill">' + esc(c.topic || 'Life') + '</span>' + esc(c.title || 'New chat') + '</div>' +
+      '<div class="p">' + date + ' &middot; ' + c.messages.length + ' messages &middot; ' + esc(last ? last.content.slice(0, 90) : '') + '</div>' +
+      '<button class="copy-btn" onclick="event.stopPropagation();deleteChat(\'' + c.id + '\')">Delete</button>' +
+      '</div>';
+  }).join('');
+}
+function openChat(id) {
+  stopSpeaking();
+  activeChatId = id;
+  localStorage.setItem(LS.active, id);
+  const chat = getChat(id);
+  if (chat && chat.topic) currentTopic = chat.topic;
+  showView('view-chat');
+  renderChat();
+}
+function deleteChat(id) {
+  saveChats(loadChats().filter(c => c.id !== id));
+  if (activeChatId === id) { activeChatId = null; localStorage.removeItem(LS.active); }
+  renderHistory();
+  toast('Chat deleted.');
+}
+function clearAllChats() {
+  if (!confirm('Delete all chats? This cannot be undone.')) return;
+  saveChats([]);
+  activeChatId = null;
+  localStorage.removeItem(LS.active);
+  renderHistory();
+  toast('All chats cleared.');
+}
+
+// ---- Settings: API key ---------------------------------------------------------
+function renderSettings() {
+  const key = (localStorage.getItem(LS.key) || '').trim();
+  $('keyStatus').textContent = key
+    ? 'Key saved on this device (…'+ key.slice(-4) +'). Duke is using Real AI.'
+    : 'No key saved. Duke is using the built-in engine.';
+  $('apiKeyInput').value = '';
+  const sub = $('subStatus');
+  if (state.subscribed) {
+    sub.textContent = 'Subscription: active (' + state.subscribed.plan + ', via ' + state.subscribed.via + ').';
+  } else {
+    sub.textContent = 'Subscription: not active.';
+  }
+  $('cancelSubBtn').classList.toggle('hidden', !state.subscribed || state.subscribed.via !== 'preview');
+  updateEngineBadge();
+  renderSettingsVoice();
+}
+function saveApiKey() {
+  const v = $('apiKeyInput').value.trim();
+  if (!v) { toast('Paste your OpenAI key first.'); return; }
+  if (v.indexOf('sk-') !== 0) {
+    if (!confirm('That does not look like an OpenAI key (they start with "sk-"). Save it anyway?')) return;
+  }
+  localStorage.setItem(LS.key, v);
+  $('apiKeyInput').value = '';
+  renderSettings();
+  toast('Key saved on this device. Duke is now using Real AI.');
+}
+function removeApiKey() {
+  localStorage.removeItem(LS.key);
+  renderSettings();
+  toast('Key removed. Duke is back on the built-in engine.');
+}
+function cancelPreviewSub() {
+  if (!state.subscribed || state.subscribed.via !== 'preview') return;
+  state.subscribed = null;
+  localStorage.removeItem(LS.plan);
+  renderSettings();
+  updateFreeBadge();
+  toast('Preview subscription cancelled.');
+}
+
+// ---- Voice: Duke talks out loud (Web Speech API, on-device only) ---------
+// TTS: window.speechSynthesis only — no server TTS, no audio files.
+// Mic dictation: window.SpeechRecognition / webkitSpeechRecognition.
+// All voice choices are stored in localStorage on this device only.
+const VOICE_ON_KEY = 'duke-voice-on';
+const VOICE_URI_KEY = 'duke-voice-uri';
+const VOICE_RATE_KEY = 'duke-voice-rate';
+const TEST_LINE = "Alright, this is Duke. If you can hear me, the voice works. Now quit messing with the settings and go fix your shit.";
+
+let speakingKey = null;
+const heardTexts = {};
+let recognition = null;
+let listening = false;
+let micBase = '';
+
+function voiceOn() {
+  return localStorage.getItem(VOICE_ON_KEY) !== 'off';
+}
+function loadVoiceRate() {
+  const v = parseFloat(localStorage.getItem(VOICE_RATE_KEY));
+  if (!isNaN(v) && v >= 0.6 && v <= 1.4) return v;
+  return 0.95;
+}
+function cleanForSpeech(text) {
+  return String(text).replace(/[*_#>`]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function getVoicesSafe() {
+  return ('speechSynthesis' in window) ? window.speechSynthesis.getVoices() : [];
+}
+
+const MALE_NAME_RE = /male|david|daniel|alex|fred|tom|james|john|mark|george|christopher|eric|roger|guy|brian|arthur|albert|aaron|lee|richard/i;
+function maleVoiceOptions(voices) {
+  const en = voices.filter(v => (v.lang || '').toLowerCase().indexOf('en') === 0);
+  const male = en.filter(v => MALE_NAME_RE.test(v.name || ''));
+  return (male.length ? male : en).slice(0, 6);
+}
+function pickDeepMaleVoice(voices) {
+  const opts = maleVoiceOptions(voices);
+  const byName = (re) => opts.find(v => re.test((v.name || '').toLowerCase()));
+  return byName(/google uk english male/) || byName(/microsoft david/) || byName(/daniel/) ||
+    byName(/alex/) || byName(/david/) || opts[0] ||
+    voices.find(v => (v.lang || '').toLowerCase().indexOf('en') === 0) || voices[0] || null;
+}
+function getSelectedVoice() {
+  const voices = getVoicesSafe();
+  if (!voices.length) return null;
+  const stored = localStorage.getItem(VOICE_URI_KEY) || 'auto';
+  if (stored !== 'auto') {
+    const found = voices.find(v => v.voiceURI === stored);
+    if (found) return found;
+  }
+  return pickDeepMaleVoice(voices);
+}
+function populateVoiceSelect(voices) {
+  const sel = $('duke-voice');
+  if (!sel) return;
+  const opts = maleVoiceOptions(voices);
+  const stored = localStorage.getItem(VOICE_URI_KEY) || 'auto';
+  let html = '<option value="auto">Deepest male voice (auto-pick)</option>';
+  opts.forEach(v => {
+    html += '<option value="' + esc(v.voiceURI) + '"' + (stored === v.voiceURI ? ' selected' : '') + '>' +
+      esc(v.name) + ' (' + esc(v.lang) + ')</option>';
+  });
+  sel.innerHTML = html;
+  sel.value = stored === 'auto' ? 'auto' : (opts.some(v => v.voiceURI === stored) ? stored : 'auto');
+}
+function loadVoices() {
+  populateVoiceSelect(getVoicesSafe());
+}
+function onVoiceSelect(uri) {
+  localStorage.setItem(VOICE_URI_KEY, uri);
+}
+function onRateInput(v) {
+  const rate = parseFloat(v);
+  if (isNaN(rate)) return;
+  localStorage.setItem(VOICE_RATE_KEY, String(rate));
+  const label = $('rateLabel');
+  if (label) label.textContent = rate.toFixed(2) + '×';
+}
+
+function speakText(text, key) {
+  if (!('speechSynthesis' in window)) return;
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  const clean = cleanForSpeech(text);
+  if (!clean) return;
+  const u = new SpeechSynthesisUtterance(clean);
+  u.pitch = 0.7;
+  u.rate = loadVoiceRate();
+  const voice = getSelectedVoice();
+  if (voice) u.voice = voice;
+  speakingKey = key || null;
+  u.onend = () => { if (speakingKey === key) { speakingKey = null; updateHearButtons(); updateTestButton(); } };
+  u.onerror = () => { if (speakingKey === key) { speakingKey = null; updateHearButtons(); updateTestButton(); } };
+  try { synth.resume(); } catch (e) {}
+  synth.speak(u);
+  updateHearButtons();
+  updateTestButton();
+}
+function stopSpeaking() {
+  if ('speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+  speakingKey = null;
+  updateHearButtons();
+  updateTestButton();
+}
+function updateHearButtons() {
+  document.querySelectorAll('.hear-btn').forEach(b => {
+    const on = b.dataset.key === speakingKey;
+    b.textContent = on ? 'Stop' : 'Hear it';
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+function toggleHear(key, btn) {
+  if (speakingKey === key) { stopSpeaking(); return; }
+  const text = heardTexts[key];
+  if (text) speakText(text, key);
+}
+function updateVoiceToggle() {
+  const btn = $('voiceToggle');
+  if (!btn) return;
+  const on = voiceOn();
+  btn.textContent = on ? '🔊 Voice on' : '🔇 Voice off';
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.setAttribute('aria-label', on ? "Turn Duke's voice off" : "Turn Duke's voice on");
+}
+function toggleVoice() {
+  const on = !voiceOn();
+  localStorage.setItem(VOICE_ON_KEY, on ? 'on' : 'off');
+  if (!on) stopSpeaking();
+  updateVoiceToggle();
+  if (!$('view-settings').classList.contains('hidden')) renderSettingsVoice();
+}
+function renderSettingsVoice() {
+  const supported = 'speechSynthesis' in window;
+  const section = $('voiceSettings');
+  const note = $('noSpeechNote');
+  if (section) section.classList.toggle('hidden', !supported);
+  if (note) note.classList.toggle('hidden', supported);
+  if (!supported) return;
+  const on = voiceOn();
+  const badge = $('voiceBadge');
+  if (badge) badge.textContent = on ? 'VOICE ON' : 'VOICE OFF';
+  const t2 = $('voiceToggle2');
+  if (t2) t2.textContent = on ? 'VOICE ON — TAP TO MUTE DUKE' : 'VOICE OFF — TAP TO LET DUKE TALK';
+  const slider = $('duke-rate');
+  if (slider) slider.value = loadVoiceRate();
+  const label = $('rateLabel');
+  if (label) label.textContent = loadVoiceRate().toFixed(2) + '×';
+  populateVoiceSelect(getVoicesSafe());
+  updateTestButton();
+}
+function toggleTestVoice() {
+  if (speakingKey === 'test') { stopSpeaking(); return; }
+  speakText(TEST_LINE, 'test');
+}
+function updateTestButton() {
+  const b = $('testVoiceBtn');
+  if (!b) return;
+  const on = speakingKey === 'test';
+  b.textContent = on ? 'STOP THE TEST' : 'HEAR DUKE TEST IT';
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+// ---- Mic dictation (SpeechRecognition fills the input — never auto-sends) ----
+function showMicError(msg) {
+  $('micErrorText').textContent = msg;
+  $('micError').classList.remove('hidden');
+}
+function hideMicError() { $('micError').classList.add('hidden'); }
+function showMicBanner() { $('micBanner').classList.remove('hidden'); }
+function hideMicBanner() { $('micBanner').classList.add('hidden'); }
+function updateMicUI() {
+  const btn = $('micBtn');
+  if (!btn) return;
+  btn.classList.toggle('listening', listening);
+  btn.setAttribute('aria-label', listening ? 'Stop listening' : 'Talk instead of typing — tap and speak to Duke');
+}
+function stopMic() {
+  if (recognition) { try { recognition.abort(); } catch (e) {} recognition = null; }
+  listening = false;
+  updateMicUI();
+  hideMicBanner();
+}
+function toggleMic() {
+  if (listening) { stopMic(); return; }
+  stopSpeaking();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    showMicError("Voice typing isn't available in this browser — it depends on the device. Typing works fine, and Duke still talks out loud.");
+    return;
+  }
+  let rec;
+  try {
+    rec = new SR();
+  } catch (e) {
+    showMicError("Voice typing isn't available in this browser — it depends on the device. Typing works fine, and Duke still talks out loud.");
+    return;
+  }
+  recognition = rec;
+  rec.lang = 'en-US';
+  rec.interimResults = true;
+  rec.continuous = false;
+  micBase = $('msgInput').value.trim();
+  rec.onresult = (e) => {
+    let t = '';
+    for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+    t = t.trim();
+    $('msgInput').value = micBase ? (t ? micBase + ' ' + t : micBase) : t;
+  };
+  rec.onerror = (e) => {
+    const code = (e && e.error) || '';
+    if (code === 'not-allowed' || code === 'service-not-allowed') {
+      showMicError("Microphone is blocked for this app — allow it in your browser or device settings to use voice typing. Typing still works, and Duke still talks out loud.");
+    } else if (code === 'no-speech') {
+      showMicError("Didn't catch that — try again, or just type it. Typing still works, and Duke still talks out loud.");
+    } else {
+      showMicError("Voice typing hit a problem — try again later. Typing still works, and Duke still talks out loud.");
+    }
+  };
+  rec.onend = () => { listening = false; updateMicUI(); hideMicBanner(); };
+  listening = true;
+  updateMicUI();
+  showMicBanner();
+  hideMicError();
+  try {
+    rec.start();
+  } catch (e) {
+    listening = false;
+    updateMicUI();
+    hideMicBanner();
+    showMicError("Voice typing isn't available in this browser — it depends on the device. Typing works fine, and Duke still talks out loud.");
+  }
+}
+
+// ---- Paywall plans -------------------------------------------------------------
+function selectPlan(plan) {
+  selectedPlan = plan;
+  document.querySelectorAll('#view-paywall .plan').forEach(el =>
+    el.classList.toggle('selected', el.dataset.plan === plan));
+  const p = PRODUCTS[plan];
+  $('subscribeBtn').textContent = 'SUBSCRIBE (PREVIEW) — ' + p.price + (p.period === 'month' ? ' / month' : p.period === 'year' ? ' / year' : ' one-time');
+}
+function updateSubStatus() {
+  const sub = $('subStatus');
+  if (!sub) return;
+  if (state.subscribed) {
+    sub.textContent = 'Subscription: active (' + state.subscribed.plan + ', via ' + state.subscribed.via + ').';
+  } else {
+    sub.textContent = 'Subscription: not active.';
+  }
+  const btn = $('premiumBtn');
+  if (btn) btn.textContent = state.subscribed ? 'Premium ✓' : 'Premium';
+}
+
+// ---- Native purchases: RevenueCat + Apple StoreKit -----------------------
+// How this works:
+//  * On a real iPhone/iPad build, Capacitor loads and the RevenueCat
+//    native plugin is reached with Capacitor.registerPlugin('Purchases').
+//    configure() -> getOfferings() -> purchasePackage() / restorePurchases()
+//    all go through Apple's StoreKit sheet. Apple handles the payment.
+//  * The plugin's own JS module is deliberately NOT imported: its ESM
+//    files use extensionless relative imports ('./definitions') that
+//    browsers cannot resolve without a bundler. registerPlugin calls the
+//    exact same native methods the plugin exposes (verified in the
+//    plugin's PurchasesPlugin.swift: configure, getOfferings,
+//    purchasePackage, restorePurchases, getCustomerInfo).
+//  * On plain web (or offline), the native bridge is absent: the paywall
+//    shows a preview note and NEVER asks for a card. There is no web
+//    checkout in this app (Apple Guideline 3.1.1 forbids one).
+let Capacitor = null;
+let Purchases = null;
+let nativeReady = false;
+let purchasesConfigured = false;
+
+async function loadNativeBridge() {
+  try {
+    const cap = await import('@capacitor/core');
+    Capacitor = cap.Capacitor;
+    if (!Capacitor.isNativePlatform()) return; // plain web: preview mode
+    // Reach the native RevenueCat plugin directly through the bridge.
+    // (See the note above for why the plugin's JS module is not imported.)
+    Purchases = Capacitor.registerPlugin('Purchases');
+    nativeReady = true;
+  } catch (e) {
+    console.warn('Native bridge unavailable — running in web preview mode.', e);
+  }
+}
+
+function hasPremium(customerInfo) {
+  try {
+    return Boolean(customerInfo && customerInfo.entitlements && customerInfo.entitlements.active && customerInfo.entitlements.active[ENTITLEMENT_ID]);
+  } catch (e) { return false; }
+}
+
+async function initPurchases() {
+  if (!nativeReady) return;
+  if (REVENUECAT_APPLE_API_KEY.indexOf('TODO') === 0) {
+    $('setupNote').classList.remove('hidden');
+    return;
+  }
+  try {
+    await Purchases.configure({ apiKey: REVENUECAT_APPLE_API_KEY });
+    purchasesConfigured = true;
+    const { customerInfo } = await Purchases.getCustomerInfo();
+    if (hasPremium(customerInfo)) {
+      unlock('restored', 'restore');
+    } else if (state.subscribed) {
+      // The store says the subscription is gone (expired/cancelled).
+      state.subscribed = null;
+      localStorage.removeItem(LS.plan);
+      updateSubStatus();
+    }
+  } catch (e) {
+    console.warn('RevenueCat setup failed:', e);
+    toast('Subscriptions could not be loaded. Check your connection and try again.');
+  }
+}
+
+function findPackage(offerings, productId) {
+  const pools = [];
+  if (offerings && offerings.current && offerings.current.availablePackages) {
+    pools.push.apply(pools, offerings.current.availablePackages);
+  }
+  if (offerings && offerings.all) {
+    Object.keys(offerings.all).forEach(k => {
+      const off = offerings.all[k];
+      if (off && off.availablePackages) pools.push.apply(pools, off.availablePackages);
+    });
+  }
+  for (const p of pools) {
+    if (p && p.product && p.product.identifier === productId) return p;
+  }
+  return null;
+}
+
+function isUserCancelled(err) {
+  if (!err) return false;
+  if (String(err.code) === '1') return true;
+  const msg = String(err.message || err).toLowerCase();
+  return msg.indexOf('cancel') !== -1;
+}
+
+function unlock(plan, via) {
+  state.subscribed = { plan: plan, via: via, date: new Date().toISOString() };
+  localStorage.setItem(LS.plan, plan);
+  updateSubStatus();
+  updateFreeBadge();
+  showView('view-chat');
+  renderChat();
+}
+
+async function onSubscribe() {
+  if (!nativeReady) {
+    // Web preview: never charge, never ask for a card.
+    $('previewNote').classList.remove('hidden');
+    unlock(selectedPlan, 'preview');
+    toast('👀 Preview only — on iPhone/iPad, payment goes through Apple In-App Purchase.');
+    return;
+  }
+  if (!purchasesConfigured) {
+    $('setupNote').classList.remove('hidden');
+    toast('Subscriptions are not set up yet — add the RevenueCat key first.');
+    return;
+  }
+  const plan = PRODUCTS[selectedPlan];
+  const btn = $('subscribeBtn');
+  btn.disabled = true;
+  try {
+    const offerings = await Purchases.getOfferings();
+    const pkg = findPackage(offerings, plan.id);
+    if (!pkg) {
+      toast('That plan is not available right now. Check the products in App Store Connect and RevenueCat.');
+      return;
+    }
+    const result = await Purchases.purchasePackage({ aPackage: pkg });
+    const customerInfo = result && result.customerInfo;
+    if (hasPremium(customerInfo)) {
+      unlock(selectedPlan, 'purchase');
+      toast('🎉 Welcome to Straight Talk Premium!');
+    } else {
+      toast('Purchase finished, but the subscription is not active yet. Try Restore Purchases.');
+    }
+  } catch (err) {
+    if (isUserCancelled(err)) {
+      toast('No worries — nothing was charged.');
+    } else {
+      console.warn('Purchase failed:', err);
+      toast('Purchase did not go through: ' + (err && err.message ? err.message : err));
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function onRestore() {
+  if (!nativeReady) {
+    toast('Restore works on iPhone/iPad after you subscribe there.');
+    return;
+  }
+  if (!purchasesConfigured) {
+    $('setupNote').classList.remove('hidden');
+    toast('Subscriptions are not set up yet — add the RevenueCat key first.');
+    return;
+  }
+  try {
+    const { customerInfo } = await Purchases.restorePurchases();
+    if (hasPremium(customerInfo)) {
+      unlock('restored', 'restore');
+      toast('🎉 Your subscription was restored!');
+    } else {
+      toast('No active subscription found for this Apple ID.');
+    }
+  } catch (err) {
+    console.warn('Restore failed:', err);
+    toast('Restore did not work: ' + (err && err.message ? err.message : err));
+  }
+}
+
+// ---- Publish Kit ---------------------------------------------------------------
+const KIT_TABS = ['App Store Listing', 'Subscriptions & Key', 'Privacy Policy', 'Checklist'];
+let kitTab = KIT_TABS[0];
+
+const KIT_LISTING = [
+  ['App name', 'Straight Talk AI — Duke'],
+  ['Subtitle (30 characters max)', 'No-Bullshit Advice. Straight Up.'],
+  ['Promo text (170 characters max)', 'Duke tells it straight. Blunt, no-filter advice on love, money, work, and life — with all the cuss words. 18+ only.'],
+  ['Description (4000 characters max)', 'Meet Duke. He does not sugarcoat. He does not do "there, there." He tells you straight up if you are being dumb, lying to yourself, or actually getting screwed over — and what to do about it.\n\nASK DUKE ANYTHING\n• Love — is she right, should you text your ex, is it over?\n• Money — why you are broke, debt, spending, saving.\n• Work — your boss, quitting, promotions, getting fired.\n• Life — motivation, bad habits, feeling stuck.\n• Roast Me — Duke roasts you, then gives you one real piece of advice.\n\nTWO BRAINS\n• Built-in engine: blunt answers on your device, works offline.\n• Real AI: add your own OpenAI key in Settings and Duke answers with a live AI model (gpt-4o-mini). Your key stays on your device and is sent only to OpenAI.\n\nHOW IT WORKS\nYour first 5 messages are free. Then go Premium for unlimited straight talk: Monthly $9.99, Yearly $59.99, or Lifetime $99.99 (one-time). Payment is charged to your Apple ID account. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period.\n\nADULTS ONLY\nThis app is 18+. It contains frequent, intense profanity. Duke is entertainment, not a therapist, doctor, lawyer, or financial advisor. In crisis, call or text 988 (US).\n\nQuestions? Email paulkelly641@gmail.com.'],
+  ['Keywords (100 characters max, comma-separated)', 'straight talk,blunt advice,no filter,roast me,duke,advice app,real talk,brutal honesty,life advice,18'],
+  ['Category', 'Lifestyle (Entertainment)'],
+  ['Age rating', '17+ (Frequent/Intense Profanity)'],
+  ['Price', 'Free — with in-app subscription'],
+  ['Bundle ID', 'com.paulkelly.straighttalkai'],
+  ['Support email', 'paulkelly641@gmail.com'],
+];
+
+const KIT_SUBS = [
+  ['Subscription group', 'Straight Talk Premium'],
+  ['Monthly', 'com.paulkelly.straighttalkai.monthly — $9.99 — Auto-renewable subscription'],
+  ['Yearly', 'com.paulkelly.straighttalkai.yearly — $59.99 — Auto-renewable subscription (BEST VALUE)'],
+  ['Lifetime', 'com.paulkelly.straighttalkai.lifetime — $99.99 — Non-consumable (one-time)'],
+  ['RevenueCat entitlement', 'premium — must be named exactly this and linked to all three products'],
+  ['RevenueCat public key', 'Paste it in www/index.html where it says TODO_REPLACE_WITH_YOUR_REVENUECAT_PUBLIC_APPLE_API_KEY (starts with appl_)'],
+  ['OpenAI key (BYOK)', 'Users add their own key in Settings. It is stored only on their device and sent only to api.openai.com. Never bake a key into the app.'],
+];
+
+const KIT_PRIVACY = 'Privacy Policy — Straight Talk AI\nLast updated: November 14, 2026\n\nStraight Talk AI ("the app") is an adults-only (18+) advice chat app. Duke is a fictional character who gives blunt, profanity-laced advice for entertainment.\n\nWhat we collect: nothing. The app does not collect, store, or share any personal information. There is no account, no sign-in, and no server that receives your data.\n\nOn-device only: Your chats, your message count, and your OpenAI API key (if you add one) are saved only on your own device, in the app\'s local storage. They never leave the device, and deleting the app deletes them. Your API key is sent only to api.openai.com when you ask Duke a question with Real AI on — never to any other server.\n\nNo ads, no tracking: The app shows no advertisements and uses no analytics or tracking tools.\n\nPurchases: Subscriptions and the lifetime purchase are processed by Apple through In-App Purchase. Apple handles payment; we never see your card details. Purchase status is checked on-device through RevenueCat to unlock the app.\n\nAdults only: This app is for users 18 and older. It contains frequent, intense profanity. It does not knowingly collect any information from anyone under 18.\n\nContact: paulkelly641@gmail.com';
+
+const KIT_CHECKLIST = [
+  ['1 — Repo & build', [
+    'Create a new GitHub repo (e.g. straight-talk-app) and push this project',
+    'Upload store/app-icon-1024.png into the repo (store/ folder)',
+    'In Codemagic, add the repo and confirm the ios-workflow is detected',
+    'Run the ios-workflow and confirm the IPA builds',
+  ]],
+  ['2 — App Store Connect', [
+    'Create the app: Straight Talk AI, bundle ID com.paulkelly.straighttalkai',
+    'Paste the App Store listing from this kit (name, subtitle, description, keywords)',
+    'Set category Lifestyle (Entertainment) and age rating 17+',
+    'Upload the app icon (store/app-icon-1024.png)',
+    'Take 6.9" and 6.5" screenshots (chat, Roast Me, paywall, Settings)',
+    'Host store/privacy-policy.html on GitHub Pages and paste the URL as Privacy Policy URL',
+    'Add bank & tax info under Agreements, Tax, and Banking',
+  ]],
+  ['2b — Subscriptions', [
+    'Create Monthly $9.99 (auto-renewable) in group "Straight Talk Premium"',
+    'Create Yearly $59.99 (auto-renewable) in the same group',
+    'Create Lifetime $99.99 as a non-consumable (not in the group)',
+    'Set up RevenueCat: free account, Entitlement named exactly "premium", link all 3 products, create an Offering with 3 packages',
+    'Paste the RevenueCat public Apple API key (appl_…) into www/index.html where it says TODO, commit and push, rebuild',
+  ]],
+  ['2c — API key', [
+    'Test the built-in engine with no key (works offline)',
+    'Test Real AI: add your own OpenAI key in Settings, send a message, confirm the badge says REAL AI',
+    'Confirm the key is never in the repo (it lives only in localStorage)',
+  ]],
+  ['3 — Privacy, screenshots, review', [
+    'Answer the App Privacy questionnaire (no data collected)',
+    'TestFlight: install on a real iPhone, test subscribe/restore with a sandbox Apple ID',
+    'Confirm the 18+ gate blocks under-18 users',
+    'Submit for Review with the review notes from the listing',
+  ]],
+];
+
+function setKitTab(t) { kitTab = t; renderKit(); }
+function loadKitChecked() {
+  try { return JSON.parse(localStorage.getItem(LS.kit) || '{}'); } catch (e) { return {}; }
+}
+function renderKit() {
+  $('kitTabs').innerHTML = KIT_TABS.map(t =>
+    '<button class="kit-tab' + (t === kitTab ? ' selected' : '') + '" onclick="setKitTab(\'' + t + '\')">' + esc(t) + '</button>'
+  ).join('');
+  const c = $('kitContent');
+  const checked = loadKitChecked();
+  const total = KIT_CHECKLIST.reduce((n, g) => n + g[1].length, 0);
+  const done = Object.keys(checked).filter(k => checked[k]).length;
+  if (kitTab === 'App Store Listing') {
+    c.innerHTML = KIT_LISTING.map(f =>
+      '<h3>' + esc(f[0]) + '</h3><div class="field-box">' + esc(f[1]) + '</div>' +
+      '<button class="copy-btn" onclick="copyText(this)" data-text="' + esc(f[1]).replace(/"/g, '&quot;') + '">Copy</button>'
+    ).join('');
+  } else if (kitTab === 'Subscriptions & Key') {
+    c.innerHTML = KIT_SUBS.map(f =>
+      '<h3>' + esc(f[0]) + '</h3><div class="field-box">' + esc(f[1]) + '</div>' +
+      '<button class="copy-btn" onclick="copyText(this)" data-text="' + esc(f[1]).replace(/"/g, '&quot;') + '">Copy</button>'
+    ).join('');
+  } else if (kitTab === 'Privacy Policy') {
+    c.innerHTML = '<div class="field-box">' + esc(KIT_PRIVACY) + '</div>' +
+      '<button class="copy-btn" onclick="copyText(this)" data-text="' + esc(KIT_PRIVACY).replace(/"/g, '&quot;') + '">Copy</button>';
+  } else {
+    c.innerHTML = '<p><b>Checklist ' + done + '/' + total + ' done</b></p>' + KIT_CHECKLIST.map((g, gi) =>
+      '<h3>' + esc(g[0]) + '</h3>' + g[1].map((item, ii) => {
+        const key = gi + '-' + ii;
+        return '<label class="check-item' + (checked[key] ? ' done' : '') + '">' +
+          '<input type="checkbox" ' + (checked[key] ? 'checked' : '') + ' onchange="toggleKitCheck(\'' + key + '\', this.checked)">' +
+          '<span>' + esc(item) + '</span></label>';
+      }).join('')
+    ).join('');
+  }
+}
+function toggleKitCheck(key, val) {
+  const checked = loadKitChecked();
+  checked[key] = val;
+  localStorage.setItem(LS.kit, JSON.stringify(checked));
+  renderKit();
+}
+function copyText(btn) {
+  const text = btn.getAttribute('data-text') || '';
+  const done = () => toast('Copied.');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  done();
+}
+
+// ---- Init -------------------------------------------------------------------
+async function init() {
+  if (localStorage.getItem(LS.theme) === 'light') document.body.classList.add('light');
+  renderTopics();
+  selectPlan(selectedPlan);
+  updateSubStatus();
+  updateVoiceToggle();
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    loadVoices();
+  }
+  window.addEventListener('beforeunload', () => {
+    if ('speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+    if (recognition) { try { recognition.abort(); } catch (e) {} }
+  });
+  await loadNativeBridge();
+  if (!nativeReady) {
+    $('previewNote').classList.remove('hidden');
+  }
+  await initPurchases();
+  if (localStorage.getItem(LS.age) === 'yes') {
+    showView('view-chat');
+    renderChat();
+  } else {
+    showView('view-gate');
+  }
+  // Debug hook for automated checks (harmless in production).
+  window.StraightTalkDebug = {
+    get nativeReady() { return nativeReady; },
+    get purchasesConfigured() { return purchasesConfigured; },
+    get freeLeft() { return freeLeft(); },
+    get hasApiKey() { return hasApiKey(); },
+    PRODUCTS: PRODUCTS,
+    TOPICS: TOPICS,
+  };
+}
+init();
+
+// Inline onclick handlers need these on window (module scope is not global).
+Object.assign(window, {
+  confirmAge: confirmAge,
+  denyAge: denyAge,
+  showView: showView,
+  backToChat: backToChat,
+  newChat: newChat,
+  selectTopic: selectTopic,
+  sendStarter: sendStarter,
+  sendMessage: sendMessage,
+  selectPlan: selectPlan,
+  onSubscribe: onSubscribe,
+  onRestore: onRestore,
+  openChat: openChat,
+  deleteChat: deleteChat,
+  clearAllChats: clearAllChats,
+  saveApiKey: saveApiKey,
+  removeApiKey: removeApiKey,
+  cancelPreviewSub: cancelPreviewSub,
+  toggleTheme: toggleTheme,
+  setKitTab: setKitTab,
+  renderKit: renderKit,
+  toggleKitCheck: toggleKitCheck,
+  copyText: copyText,
+  fallbackToLocal: fallbackToLocal,
+  toggleVoice: toggleVoice,
+  toggleHear: toggleHear,
+  toggleMic: toggleMic,
+  toggleTestVoice: toggleTestVoice,
+  onVoiceSelect: onVoiceSelect,
+  onRateInput: onRateInput,
+  hideMicError: hideMicError,
+  stopSpeaking: stopSpeaking,
+  speakText: speakText,
+  loadVoices: loadVoices,
+});
+</script>
+</body>
+</html>
