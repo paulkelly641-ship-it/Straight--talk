@@ -22,6 +22,9 @@ ASK DUKE ANYTHING
 • Life — motivation, bad habits, feeling stuck.
 • Roast Me — Duke roasts you, then gives you one real piece of advice.
 
+DUKE'S VERDICT — EVERY REPLY, SAME STRUCTURE
+Every Duke reply follows one fixed format, so this is a structured advice engine, not an open-ended chatbot: VERDICT — one blunt line, his straight-up call. WHY — two or three lines explaining it. DO THIS — three numbered concrete steps. Duke's Dare — one dare for today.
+
 TWO BRAINS
 • Built-in engine: blunt answers on your device, works offline.
 • Real AI: add your own OpenAI key in Settings and Duke answers with a live AI model (gpt-4o-mini). Your key stays on your device and is sent only to OpenAI.
@@ -62,7 +65,7 @@ Monthly & Yearly belong to subscription group "Straight Talk Premium".
 Lifetime is a non-consumable, outside the group.
 
 ## Review notes (for the App Review team)
-Adults-only (18+) advice chat app. The 18+ age gate is the first screen. All content is built in and works offline. No ads, no tracking, no account, no user-to-user content. Purchases use Apple In-App Purchase only. The built-in reply engine runs on-device; the optional Real AI mode uses the user's own OpenAI API key, stored only on their device and sent only to api.openai.com. A demo subscription can be tested with a sandbox account. Duke is a fictional character and his advice is entertainment, not professional advice.
+Adults-only (18+) advice chat app. Every Duke reply follows a fixed structured format — VERDICT (one blunt line), WHY (2–3 lines), DO THIS (3 numbered concrete steps), and Duke's Dare (one daily dare) — so the app is a structured advice engine, not an open-ended chatbot. The 18+ age gate is the first screen. All content is built in and works offline. No ads, no tracking, no account, no user-to-user content. Purchases use Apple In-App Purchase only. The built-in reply engine runs on-device; the optional Real AI mode uses the user's own OpenAI API key, stored only on their device and sent only to api.openai.com. A demo subscription can be tested with a sandbox account. Duke is a fictional character and his advice is entertainment, not professional advice.
 
 ## Screenshots needed
 - iPhone 6.9" (1290 × 2796) — at least 3

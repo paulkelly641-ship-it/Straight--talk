@@ -22,6 +22,12 @@
     in localStorage on your device and is sent ONLY to api.openai.com —
     it is never baked into this file and never sent to any other server.
 
+  EVERY DUKE REPLY uses the Duke's Verdict format, in both brains:
+  VERDICT (one blunt line), WHY (2-3 lines), DO THIS (3 numbered
+  concrete steps), Duke's Dare (one dare for today). The built-in
+  engine's replies are written in that format; the Real AI brain's
+  system prompt requires it; chat renders each section distinctly.
+
   PAYMENTS: 5 free messages, then a subscription paywall. On a real
   iPhone/iPad build, payment goes through Apple In-App Purchase via the
   RevenueCat Capacitor plugin, reached via Capacitor.registerPlugin('Purchases')
@@ -130,6 +136,15 @@
   .msg.duke { align-self: flex-start; background: var(--bubble-duke); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
   .msg.duke .who { display: block; font-size: 11px; font-weight: 900; letter-spacing: 1px; color: var(--accent); margin-bottom: 4px; }
   .msg .err { color: #FF6B6B; }
+  /* Duke's Verdict format: VERDICT bold, DO THIS as a numbered list, Dare highlighted */
+  .msg.duke .v-label { display: block; font-size: 11px; font-weight: 900; letter-spacing: 1px; color: var(--accent); margin: 8px 0 2px; }
+  .msg.duke .v-label:first-child { margin-top: 0; }
+  .msg.duke .verdict { display: block; font-size: 17px; font-weight: 900; line-height: 1.4; margin-bottom: 4px; }
+  .msg.duke .why { display: block; margin-bottom: 4px; }
+  .msg.duke ol.do-this { margin: 4px 0 6px; padding-left: 22px; }
+  .msg.duke ol.do-this li { margin: 4px 0; }
+  .msg.duke .dare { display: block; background: rgba(255, 77, 0, 0.14); border: 1px solid var(--accent); border-radius: 10px; padding: 9px 11px; margin-top: 8px; }
+  .msg.duke .dare .v-label { margin-top: 0; }
   .typing { color: var(--dim); font-style: italic; }
   .input-bar {
     position: sticky; bottom: 0; padding: 10px 0 14px; background: var(--bg);
@@ -492,13 +507,17 @@ const DUKE_OPENER = "I'm Duke. I don't do sugarcoating, I don't do there there, 
 // System prompt used for the Real AI (OpenAI) brain. Same rules Duke lives by.
 const DUKE_SYSTEM = [
   "You are Duke, a brutally honest advice-giver. You swear freely and you never sugarcoat anything.",
-  "Your job: tell the user the hard truth first, then give concrete numbered steps they can actually do, then end with a line starting 'Bottom line:'.",
+  "Every reply MUST use the Duke's Verdict format, exactly these four sections in this order:",
+  "VERDICT: one blunt line — your straight-up call on their situation.",
+  "WHY: two or three short lines explaining the verdict.",
+  "DO THIS: exactly three numbered concrete steps they can actually do.",
+  "Duke's Dare: one dare for today — one small bold thing to do right now.",
   "No therapy-speak, no 'I hear you', no motivational poster bullshit. Talk like a blunt friend who actually gives a damn.",
   "If the user is being dumb, say so plainly. If they are lying to themselves, call it out. If someone else is screwing them over, say that too.",
   "Never use slurs targeting race, sexuality, disability, or religion.",
   "You are not a doctor, therapist, lawyer, or financial advisor — say so if asked for medical, legal, or financial advice.",
   "If the user sounds like they may harm themselves, tell them to call or text 988 (US Suicide and Crisis Lifeline) right away.",
-  "Keep replies focused and readable: a short hard truth, numbered steps, then the Bottom line.",
+  "Keep replies focused and readable: follow the four sections and nothing else — no extra intro, no sign-off, no 'Bottom line'.",
 ].join(' ');
 
 // ---- Duke's built-in engine (local template/keyword replies) ---------------
@@ -509,34 +528,34 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 const DUKE_LOCAL = {
   'Love': [
-    "Yeah, she's right. You hear the words and then you do whatever the fuck you were going to do anyway. That's not listening, that's waiting for your turn to talk.\n\n1. Next time she talks, shut your mouth until she's actually finished.\n2. Repeat back what she said before you answer. If you can't, you weren't listening.\n3. Do the thing she asked about within 24 hours or stop pretending you care.\n\nBottom line: listening is a verb, not a vibe. Start doing it.",
-    "You already know the answer and you don't like it. If you have to ask a blunt stranger whether your partner is cheating, trust is already dead — you're just looking for permission to admit it.\n\n1. Stop snooping and look at the facts: secretive phone, weird hours, stories that don't add up.\n2. Ask them straight, face to face, and watch their reaction — not their words.\n3. Decide what you'll do if it's true BEFORE you get the answer, or you'll freeze.\n\nBottom line: the question isn't whether they're cheating. It's why you're still there if you don't trust them.",
-    "Texting your ex is like drinking the milk after the expiration date and being surprised it tastes like shit. You broke up for a reason. That reason didn't expire.\n\n1. Delete the thread so you can't re-read it at 2 a.m.\n2. If you're lonely, call a friend, not the person who already left.\n3. Give it 30 days. If you still want to text them then, you're allowed to be dumb on purpose.\n\nBottom line: your ex is an ex for a reason. Leave it in the past where it belongs.",
+    "VERDICT: Yeah, she's right — you don't listen, you just wait for your turn to talk.\nWHY: You hear the words and then do whatever the fuck you were going to do anyway. That's not listening, that's rehearsing your reply while she talks. She can tell the difference, and that's why she's saying it again.\nDO THIS:\n1. Next time she talks, shut your mouth until she's actually finished.\n2. Repeat back what she said before you answer. If you can't, you weren't listening.\n3. Do the thing she asked about within 24 hours or stop pretending you care.\nDUKE'S DARE: Tonight, ask her one real question about her day — and don't say a word about yourself until she's done answering.",
+    "VERDICT: If you're asking a blunt stranger whether your partner is cheating, trust is already dead — you're just looking for permission to admit it.\nWHY: You already know the answer and you don't like it. The secretive phone, the weird hours, the stories that don't add up — you've been collecting evidence and calling it paranoia.\nDO THIS:\n1. Stop snooping and look at the facts: secretive phone, weird hours, stories that don't add up.\n2. Ask them straight, face to face, and watch their reaction — not their words.\n3. Decide what you'll do if it's true BEFORE you get the answer, or you'll freeze.\nDUKE'S DARE: Write down, right now, the exact line you'll say if they admit it — and the line you'll say if they deny it.",
+    "VERDICT: Texting your ex is like drinking expired milk and being surprised it tastes like shit.\nWHY: You broke up for a reason, and that reason didn't expire. You're not missing them, you're missing being wanted — and the 2 a.m. version of you is a terrible decision-maker.\nDO THIS:\n1. Delete the thread so you can't re-read it at 2 a.m.\n2. If you're lonely, call a friend, not the person who already left.\n3. Give it 30 days. If you still want to text them then, you're allowed to be dumb on purpose.\nDUKE'S DARE: Delete the thread today. Not tomorrow, not 'later' — today.",
   ],
   'Money': [
-    "You're broke by the 15th because you spend like payday is a personality trait. It's not a mystery. It's math, and the math hates you.\n\n1. Write down every dollar you spent last month. All of it. Yes, the dumb shit too.\n2. Cut one recurring thing today — one subscription, one habit, one delivery app.\n3. Move money to savings the day you get paid, before you can touch it.\n\nBottom line: you don't have an income problem, you have a 'spend first, think never' problem.",
-    "A loan to pay off cards is just moving the fire from one room to another and calling it fixed. It works ONLY if you stop using the cards.\n\n1. Add up the total debt. The real number. Stop hiding from it.\n2. If the loan rate is actually lower AND you cut up the cards, fine. Otherwise you're just buying a prettier hole.\n3. Pay more than the minimum every single month or you'll die old with this debt.\n\nBottom line: debt doesn't care about your intentions. It cares about payments.",
-    "You stop spending money you don't have the same way you stop anything stupid: you make it harder to do.\n\n1. Delete the saved cards from your phone. Every one of them.\n2. 48-hour rule: if you still want it in 48 hours, fine. Most of it you won't.\n3. Unsubscribe from the emails that sell you shit you don't need.\n\nBottom line: willpower is trash. Systems work. Build one.",
+    "VERDICT: You're broke by the 15th because you spend like payday is a personality trait.\nWHY: It's not a mystery. It's math, and the math hates you. The money isn't disappearing — you're spending it first and thinking about it never.\nDO THIS:\n1. Write down every dollar you spent last month. All of it. Yes, the dumb shit too.\n2. Cut one recurring thing today — one subscription, one habit, one delivery app.\n3. Move money to savings the day you get paid, before you can touch it.\nDUKE'S DARE: Cancel one subscription today — the one you already know you don't use.",
+    "VERDICT: A loan to pay off cards is just moving the fire from one room to another and calling it fixed.\nWHY: It works ONLY if you stop using the cards. Otherwise you're just buying a prettier hole to stand in — and the debt doesn't care about your intentions, it cares about payments.\nDO THIS:\n1. Add up the total debt. The real number. Stop hiding from it.\n2. If the loan rate is actually lower AND you cut up the cards, fine. Otherwise don't do it.\n3. Pay more than the minimum every single month or you'll die old with this debt.\nDUKE'S DARE: Tonight, add up the real total and write it on a piece of paper where you'll see it every morning.",
+    "VERDICT: You don't have a spending problem, you have a 'make it too easy to spend' problem.\nWHY: Willpower is trash. Every app on your phone is designed to take your money in two taps, and you're surprised it's working. Systems beat willpower every single time.\nDO THIS:\n1. Delete the saved cards from your phone. Every one of them.\n2. 48-hour rule: if you still want it in 48 hours, fine. Most of it you won't.\n3. Unsubscribe from the emails that sell you shit you don't need.\nDUKE'S DARE: Delete one saved card from your phone right now, before you forget.",
   ],
   'Work': [
-    "Your boss takes credit because you let him. Every time you stay quiet, you're signing the permission slip.\n\n1. Start a paper trail: email summaries after every win. 'Just confirming I finished X.'\n2. Next time, speak up in the room, calmly: 'Thanks — I built that, happy to walk everyone through it.'\n3. If it keeps happening after you've documented it twice, take it to their boss or start looking.\n\nBottom line: nobody hands you credit. You take it, politely, in writing.",
-    "Quitting with nothing lined up is brave or stupid depending on one thing: how much money you have.\n\n1. If you've got 3 months of expenses saved, quitting is a choice. If not, it's a panic attack with paperwork.\n2. Start applying TODAY, while you still have a paycheck. It's easier to get hired when you're employed.\n3. Don't burn the bridge on the way out — this industry is smaller than you think.\n\nBottom line: don't quit a job. Quit into a better one.",
-    "You got passed over. That stings. Now decide if it's politics or performance, because the fix is different.\n\n1. Ask your manager, directly: 'What exactly do I need to show to get the next one?' Get it in writing.\n2. If the answer is vague bullshit, they already picked someone and the process was theater.\n3. Either way, start building the skills and the exit plan at the same time.\n\nBottom line: a 'no' with a clear reason is feedback. A 'no' with no reason is your cue to leave.",
+    "VERDICT: Your boss takes credit because you let him.\nWHY: Every time you stay quiet, you're signing the permission slip. Nobody hands you credit — you take it, politely, in writing.\nDO THIS:\n1. Start a paper trail: email summaries after every win. 'Just confirming I finished X.'\n2. Next time, speak up in the room, calmly: 'Thanks — I built that, happy to walk everyone through it.'\n3. If it keeps happening after you've documented it twice, take it to their boss or start looking.\nDUKE'S DARE: Send one email today that puts your name on work you did — 'just confirming I finished X.'",
+    "VERDICT: Quitting with nothing lined up is brave or stupid depending on one thing: how much money you have.\nWHY: If you've got 3 months of expenses saved, quitting is a choice. If not, it's a panic attack with paperwork. And it's easier to get hired when you're still employed.\nDO THIS:\n1. Check your savings honestly: 3 months of expenses means it's a choice, less means it's a panic attack with paperwork.\n2. Start applying TODAY, while you still have a paycheck.\n3. Don't burn the bridge on the way out — this industry is smaller than you think.\nDUKE'S DARE: Send out one job application today, before you do anything else.",
+    "VERDICT: You got passed over. That stings — now decide if it's politics or performance, because the fix is different.\nWHY: A 'no' with a clear reason is feedback. A 'no' with no reason is your cue to leave. Either way, sitting around angry about it changes nothing.\nDO THIS:\n1. Ask your manager, directly: 'What exactly do I need to show to get the next one?' Get it in writing.\n2. If the answer is vague bullshit, they already picked someone and the process was theater.\n3. Either way, start building the skills and the exit plan at the same time.\nDUKE'S DARE: Ask your manager that question today — in writing, not in your head.",
   ],
   'Life': [
-    "You don't have a Monday problem. You have a 'I like the idea of changing more than I like changing' problem.\n\n1. Pick ONE thing. Not five. One.\n2. Do the smallest possible version of it today — 10 minutes, not a whole new life.\n3. Do it again tomorrow. That's the whole secret. There is no other secret.\n\nBottom line: motivation is a lie. Action comes first, motivation follows.",
-    "No, they don't have their shit together. They just post the good parts. You're comparing your blooper reel to their highlight reel, and that's a rigged game.\n\n1. Stop scrolling for an hour a day and notice how much quieter your brain gets.\n2. Write down three things that are actually fine in your life right now.\n3. Measure yourself against who you were last year, not against strangers online.\n\nBottom line: everybody's faking it a little. The ones winning are just faking it forward.",
-    "Are you wasting your life? Let me answer with a question: if you keep doing exactly what you did this week, where are you in five years? If that picture sucks, then yeah — and the good news is you're the one driving.\n\n1. Name the one thing you'd regret NOT doing in five years.\n2. Spend one hour this week on it. One hour. That's it.\n3. Repeat weekly. Small steps beat grand plans every time.\n\nBottom line: you're not out of time. You're out of excuses.",
+    "VERDICT: You don't have a Monday problem. You have a 'like the idea of changing more than changing' problem.\nWHY: Motivation is a lie. Action comes first, motivation follows — and every 'I'll start Monday' is just a way to feel good about doing nothing today.\nDO THIS:\n1. Pick ONE thing. Not five. One.\n2. Do the smallest possible version of it today — 10 minutes, not a whole new life.\n3. Do it again tomorrow. That's the whole secret. There is no other secret.\nDUKE'S DARE: Do 10 minutes of the thing today. Set a timer, do it, stop.",
+    "VERDICT: No, they don't have their shit together. They just post the good parts.\nWHY: You're comparing your blooper reel to their highlight reel, and that's a rigged game. Everybody's faking it a little — the ones winning are just faking it forward.\nDO THIS:\n1. Stop scrolling for an hour a day and notice how much quieter your brain gets.\n2. Write down three things that are actually fine in your life right now.\n3. Measure yourself against who you were last year, not against strangers online.\nDUKE'S DARE: Put the phone down for one full hour today and do something that isn't scrolling.",
+    "VERDICT: If you keep doing exactly what you did this week, where are you in five years? If that picture sucks, then yeah — and the good news is you're the one driving.\nWHY: You're not out of time, you're out of excuses. Small steps beat grand plans every time, but only if you actually take them.\nDO THIS:\n1. Name the one thing you'd regret NOT doing in five years.\n2. Spend one hour this week on it. One hour. That's it.\n3. Repeat weekly. Small steps beat grand plans every time.\nDUKE'S DARE: Spend one hour on that thing this week — schedule it right now, today.",
   ],
   'Roast Me': [
-    "Oh, you want the full roast? Fine. You're the kind of person who says 'I should really start working out' while ordering extra fries, and you mean it every single time. Your life choices read like a list of things you'd warn a friend not to do.\n\nBut here's the one real piece of advice: pick the smallest dumb habit you have and kill it this week. One. That's how people actually change — not with a montage, with one less stupid decision a day.\n\nBottom line: you're a mess, but you're a fixable mess. Start small.",
-    "You're still single because you want a movie romance with a streaming-service effort level. You want someone to just show up, love your flaws, and never ask you to change — buddy, that's a dog, not a partner.\n\n1. Be the person someone would actually want to date. Start with hygiene, then hobbies, then honesty.\n2. Go places where your kind of people are, instead of waiting in your living room.\n3. Ask someone out. The worst they say is no, and 'no' won't kill you.\n\nBottom line: love doesn't find people hiding on the couch. Get up.",
-    "Your spending habits? You treat your bank account like a magic trick — money goes in, you wave your hands, and POOF, it's gone, and you have absolutely nothing to show for it except a drawer full of chargers for things you don't own anymore.\n\n1. Check your account every morning for a week. Face the damage.\n2. Cancel three subscriptions today. You know which three.\n3. Give yourself a weekly cash limit and leave the cards at home.\n\nBottom line: you're not broke, you're just funding a lifestyle you can't afford. Stop it.",
+    "VERDICT: You're the kind of person who says 'I should really start working out' while ordering extra fries — and you mean it every single time.\nWHY: Your life choices read like a list of things you'd warn a friend not to do. But you're a fixable mess: people don't change with a montage, they change with one less stupid decision a day.\nDO THIS:\n1. Pick the smallest dumb habit you have and kill it this week. One.\n2. Replace it with something that takes 10 minutes, not a whole new personality.\n3. Tell one person you're doing it, so someone will notice if you quit.\nDUKE'S DARE: Kill one dumb habit this week. Pick it right now and name it out loud.",
+    "VERDICT: You're still single because you want a movie romance with a streaming-service effort level.\nWHY: You want someone to just show up, love your flaws, and never ask you to change — buddy, that's a dog, not a partner. Love doesn't find people hiding on the couch.\nDO THIS:\n1. Be the person someone would actually want to date. Start with hygiene, then hobbies, then honesty.\n2. Go places where your kind of people are, instead of waiting in your living room.\n3. Ask someone out. The worst they say is no, and 'no' won't kill you.\nDUKE'S DARE: Ask someone out this week — or at least start one real conversation with a stranger.",
+    "VERDICT: You treat your bank account like a magic trick — money goes in, you wave your hands, and POOF, it's gone.\nWHY: You have absolutely nothing to show for it except a drawer full of chargers for things you don't own anymore. You're not broke, you're funding a lifestyle you can't afford.\nDO THIS:\n1. Check your account every morning for a week. Face the damage.\n2. Cancel three subscriptions today. You know which three.\n3. Give yourself a weekly cash limit and leave the cards at home.\nDUKE'S DARE: Cancel three subscriptions today — you know exactly which three.",
   ],
 };
 const DUKE_LOCAL_GENERIC = [
-  "That's a dumb question and you know it. But fine — here's the truth: you're overthinking the wrong part. The problem isn't complicated, you're just scared of the answer.\n\n1. Say the hard thing out loud, to yourself first.\n2. Do the obvious next step today, not 'soon'.\n3. Stop asking for permission to fix your own life.\n\nBottom line: you already know what to do. Go do it.",
-  "Look, I don't do hand-holding. Here's the deal: whatever you're stuck on, the answer is almost always 'stop lying to yourself about it'.\n\n1. Write down what's actually true, not what you wish was true.\n2. Pick the one move that fixes the most, and do it this week.\n3. If it blows up, you'll survive. You've survived every bad day so far.\n\nBottom line: clarity first, courage second, excuses never.",
+  "VERDICT: That's a dumb question and you know it — but you're overthinking the wrong part.\nWHY: The problem isn't complicated, you're just scared of the answer. You already know what to do, you're just waiting for someone to give you permission to do it.\nDO THIS:\n1. Say the hard thing out loud, to yourself first.\n2. Do the obvious next step today, not 'soon'.\n3. Stop asking for permission to fix your own life.\nDUKE'S DARE: Do the obvious next step today — not tomorrow, today.",
+  "VERDICT: Whatever you're stuck on, the answer is almost always 'stop lying to yourself about it.'\nWHY: I don't do hand-holding. Write down what's actually true, not what you wish was true — clarity comes first, courage second, and excuses never.\nDO THIS:\n1. Write down what's actually true, not what you wish was true.\n2. Pick the one move that fixes the most, and do it this week.\n3. If it blows up, you'll survive. You've survived every bad day so far.\nDUKE'S DARE: Write the truth down today — one page, no bullshit, just what's real.",
 ];
 
 function topicOf(text) {
@@ -587,6 +606,63 @@ function toast(msg) {
 }
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ---- Duke's Verdict rendering -------------------------------------------------
+// Every Duke reply (both brains) follows the Duke's Verdict format:
+//   VERDICT: one blunt line
+//   WHY: 2-3 lines
+//   DO THIS: 3 numbered steps
+//   Duke's Dare: one dare for today
+// This renders each section distinctly: VERDICT bold, DO THIS as a real
+// numbered list, the Dare highlighted. Replies saved before this format
+// (or that don't follow it) fall back to plain text with line breaks.
+function renderDukeReply(text) {
+  const lines = String(text).split('\n');
+  const verdict = [];
+  const why = [];
+  const steps = [];
+  const dare = [];
+  let section = null;
+  const LABELS = [
+    [/^verdict\s*:/i, 'verdict'],
+    [/^why\s*:/i, 'why'],
+    [/^do this\s*:?\s*$/i, 'steps'],
+    [/^duke'?s dare\s*:?/i, 'dare'],
+    [/^dare\s*:/i, 'dare'],
+  ];
+  for (const raw of lines) {
+    const line = raw.trim();
+    let matched = false;
+    for (const [re, name] of LABELS) {
+      const m = line.match(re);
+      if (m) {
+        section = name;
+        const rest = line.slice(m[0].length).trim();
+        if (rest) {
+          if (name === 'verdict') verdict.push(rest);
+          else if (name === 'why') why.push(rest);
+          else if (name === 'dare') dare.push(rest);
+        }
+        matched = true;
+        break;
+      }
+    }
+    if (matched) continue;
+    if (section === 'steps') {
+      const s = line.match(/^\d+[.)]\s*(.*)$/);
+      if (s) steps.push(s[1].trim());
+      else if (line) steps.push(line);
+    } else if (section === 'verdict' && line) verdict.push(line);
+    else if (section === 'why' && line) why.push(line);
+    else if (section === 'dare' && line) dare.push(line);
+  }
+  if (!verdict.length) return esc(text).replace(/\n/g, '<br>');
+  let html = '<span class="v-label">VERDICT</span><span class="verdict">' + esc(verdict.join(' ')) + '</span>';
+  if (why.length) html += '<span class="v-label">WHY</span><span class="why">' + esc(why.join(' ')) + '</span>';
+  if (steps.length) html += '<span class="v-label">DO THIS</span><ol class="do-this">' + steps.map(s => '<li>' + esc(s) + '</li>').join('') + '</ol>';
+  if (dare.length) html += '<span class="dare"><span class="v-label">DUKE\'S DARE</span>' + esc(dare.join(' ')) + '</span>';
+  return html;
 }
 
 // ---- Views -------------------------------------------------------------------
@@ -662,7 +738,7 @@ function appendMsgEl(role, content, id) {
   if (role === 'assistant') {
     const key = 'msg-' + (id || ('x' + Math.random().toString(36).slice(2, 8)));
     heardTexts[key] = content;
-    d.innerHTML = '<span class="who">DUKE</span>' + esc(content).replace(/\n/g, '<br>') +
+    d.innerHTML = '<span class="who">DUKE</span>' + renderDukeReply(content) +
       '<br><button class="hear-btn" data-key="' + key + '" aria-pressed="false" onclick="toggleHear(\'' + key + '\', this)">Hear it</button>';
   } else {
     d.textContent = content;
@@ -1339,7 +1415,7 @@ const KIT_LISTING = [
   ['App name', 'Straight Talk AI — Duke'],
   ['Subtitle (30 characters max)', 'No-Bullshit Advice. Straight Up.'],
   ['Promo text (170 characters max)', 'Duke tells it straight. Blunt, no-filter advice on love, money, work, and life — with all the cuss words. 18+ only.'],
-  ['Description (4000 characters max)', 'Meet Duke. He does not sugarcoat. He does not do "there, there." He tells you straight up if you are being dumb, lying to yourself, or actually getting screwed over — and what to do about it.\n\nASK DUKE ANYTHING\n• Love — is she right, should you text your ex, is it over?\n• Money — why you are broke, debt, spending, saving.\n• Work — your boss, quitting, promotions, getting fired.\n• Life — motivation, bad habits, feeling stuck.\n• Roast Me — Duke roasts you, then gives you one real piece of advice.\n\nTWO BRAINS\n• Built-in engine: blunt answers on your device, works offline.\n• Real AI: add your own OpenAI key in Settings and Duke answers with a live AI model (gpt-4o-mini). Your key stays on your device and is sent only to OpenAI.\n\nHOW IT WORKS\nYour first 5 messages are free. Then go Premium for unlimited straight talk: Monthly $9.99, Yearly $59.99, or Lifetime $99.99 (one-time). Payment is charged to your Apple ID account. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period.\n\nADULTS ONLY\nThis app is 18+. It contains frequent, intense profanity. Duke is entertainment, not a therapist, doctor, lawyer, or financial advisor. In crisis, call or text 988 (US).\n\nQuestions? Email paulkelly641@gmail.com.'],
+  ['Description (4000 characters max)', 'Meet Duke. He does not sugarcoat. He does not do "there, there." He tells you straight up if you are being dumb, lying to yourself, or actually getting screwed over — and what to do about it.\n\nASK DUKE ANYTHING\n• Love — is she right, should you text your ex, is it over?\n• Money — why you are broke, debt, spending, saving.\n• Work — your boss, quitting, promotions, getting fired.\n• Life — motivation, bad habits, feeling stuck.\n• Roast Me — Duke roasts you, then gives you one real piece of advice.\n\nDUKE\'S VERDICT — EVERY REPLY, SAME STRUCTURE\nEvery Duke reply follows one fixed format, so this is a structured advice engine, not an open-ended chatbot: VERDICT — one blunt line, his straight-up call. WHY — two or three lines explaining it. DO THIS — three numbered concrete steps. Duke\'s Dare — one dare for today.\n\nTWO BRAINS\n• Built-in engine: blunt answers on your device, works offline.\n• Real AI: add your own OpenAI key in Settings and Duke answers with a live AI model (gpt-4o-mini). Your key stays on your device and is sent only to OpenAI.\n\nHOW IT WORKS\nYour first 5 messages are free. Then go Premium for unlimited straight talk: Monthly $9.99, Yearly $59.99, or Lifetime $99.99 (one-time). Payment is charged to your Apple ID account. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period.\n\nADULTS ONLY\nThis app is 18+. It contains frequent, intense profanity. Duke is entertainment, not a therapist, doctor, lawyer, or financial advisor. In crisis, call or text 988 (US).\n\nQuestions? Email paulkelly641@gmail.com.'],
   ['Keywords (100 characters max, comma-separated)', 'straight talk,blunt advice,no filter,roast me,duke,advice app,real talk,brutal honesty,life advice,18'],
   ['Category', 'Lifestyle (Entertainment)'],
   ['Age rating', '17+ (Frequent/Intense Profanity)'],
